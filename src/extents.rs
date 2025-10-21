@@ -18,6 +18,7 @@ pub(crate) struct Extents {
 pub(crate) struct ExtentDescriptor {
     pub(crate) logical_block_number: u32,
     pub(crate) number_of_blocks: u16,
+    pub(crate) block_number: u64,
     pub(crate) upper_part_physical_block_number: u16,
     pub(crate) lower_part_physical_block_number: u32,
 }
@@ -25,6 +26,7 @@ pub(crate) struct ExtentDescriptor {
 #[derive(Debug, Clone)]
 pub(crate) struct IndexDescriptor {
     pub(crate) logical_block_number: u32,
+    pub(crate) block_number: u64,
     pub(crate) lower_part_physical_block_number: u32,
     pub(crate) upper_part_physical_block_number: u16,
 }
@@ -74,24 +76,39 @@ impl Extents {
                 let (input, upper_part_physical_block_number) = le_u16(input)?;
                 let (input, lower_part_physical_block_number) = le_u32(input)?;
                 remaining = input;
+                // let adjust = 0x1000;
+                //let block_number = lower_part_physical_block_number as u64
+                //    + adjust * upper_part_physical_block_number as u64;
+                let block_number = (upper_part_physical_block_number as u64) << 32
+                    | lower_part_physical_block_number as u64;
                 let desc = ExtentDescriptor {
                     logical_block_number,
                     number_of_blocks,
                     upper_part_physical_block_number,
                     lower_part_physical_block_number,
+                    block_number,
                 };
                 extent.extent_descriptors.push(desc);
                 continue;
             }
+
+            // The extent points to more blocks
+            // Will need to parse the extents at the offset: block_number * blocksize
             let (input, logical_block_number) = le_u32(remaining)?;
             let (input, lower_part_physical_block_number) = le_u32(input)?;
             let (input, upper_part_physical_block_number) = le_u16(input)?;
             let (input, _unknown) = le_u16(input)?;
             remaining = input;
+            // let adjust = 0x1000;
+            // let block_number = lower_part_physical_block_number as u64
+            //    + adjust * upper_part_physical_block_number as u64;
+            let block_number = (upper_part_physical_block_number as u64) << 32
+                | lower_part_physical_block_number as u64;
             let index = IndexDescriptor {
                 logical_block_number,
                 lower_part_physical_block_number,
                 upper_part_physical_block_number,
+                block_number,
             };
             extent.index_descriptors.push(index);
         }
@@ -134,6 +151,7 @@ mod tests {
             results.extent_descriptors[0].lower_part_physical_block_number,
             9220
         );
+        assert_eq!(results.extent_descriptors[0].block_number, 9220);
         assert_eq!(
             results.extent_descriptors[0].upper_part_physical_block_number,
             0

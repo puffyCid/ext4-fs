@@ -8,7 +8,7 @@ use crate::{
 use log::{error, warn};
 use nom::{
     bytes::complete::take,
-    number::complete::{le_u8, le_u16, le_u32},
+    number::complete::{le_i32, le_u8, le_u16, le_u32},
 };
 use std::collections::HashMap;
 
@@ -17,11 +17,11 @@ pub struct Inode {
     pub(crate) inode_type: InodeType,
     pub(crate) permissions: Vec<InodePermissions>,
     pub(crate) uid: u16,
-    pub(crate) size: u32,
-    pub(crate) accessed: u32,
-    pub(crate) changed: u32,
-    pub(crate) modified: u32,
-    pub(crate) deleted: u32,
+    pub(crate) size: u64,
+    pub(crate) accessed: i64,
+    pub(crate) changed: i64,
+    pub(crate) modified: i64,
+    pub(crate) deleted: i32,
     pub(crate) gid: u16,
     pub(crate) hard_links: u16,
     blocks_count: u32,
@@ -30,7 +30,7 @@ pub struct Inode {
     indirect_block: u32,
     double_indirect: u32,
     triple_indirect: u32,
-    pub(crate) extends: Vec<Extents>,
+    pub(crate) extents: Vec<Extents>,
     file_entry: Vec<u8>,
     nfs: u32,
     acl_block: u32,
@@ -46,10 +46,11 @@ pub struct Inode {
     changed_precision: u32,
     modified_precision: u32,
     accessed_precision: u32,
-    pub(crate) created: u32,
+    pub(crate) created: i64,
     created_precision: u32,
     pub(crate) extended_attributes: HashMap<String, String>,
     pub(crate) symoblic_link: String,
+    pub(crate) is_sparse: bool,
 }
 
 #[derive(Debug, PartialEq)]
@@ -144,10 +145,10 @@ impl Inode {
 
         // If there is NO ExtendedAttribute flag, these are timestamps
         // If the Inode ExtendedAttribute flag is set, these are lower parts of the extended attribute
-        let (input, accessed_or_checksum) = le_u32(input)?;
-        let (input, changed_or_reference_count) = le_u32(input)?;
-        let (input, modified_or_inode_extended_attribute) = le_u32(input)?;
-        let (input, deleted) = le_u32(input)?;
+        let (input, mut accessed_or_checksum) = le_i32(input)?;
+        let (input, changed_or_reference_count) = le_i32(input)?;
+        let (input, modified_or_inode_extended_attribute) = le_i32(input)?;
+        let (input, deleted) = le_i32(input)?;
 
         let (input, gid) = le_u16(input)?;
         let (input, hard_links) = le_u16(input)?;
@@ -210,7 +211,7 @@ impl Inode {
         let (input, changed_precision) = le_u32(input)?;
         let (input, modified_precision) = le_u32(input)?;
         let (input, accessed_precision) = le_u32(input)?;
-        let (input, created) = le_u32(input)?;
+        let (input, created) = le_i32(input)?;
         let (input, created_precision) = le_u32(input)?;
         let (input, upper_version) = le_u32(input)?;
         let (input, i_projid) = le_u32(input)?;
@@ -220,7 +221,7 @@ impl Inode {
             inode_type: Inode::get_file_type(modes),
             permissions: Inode::get_permissions(modes),
             uid,
-            size,
+            size: ((upper_size as u64) << 32) | size as u64,
             accessed: 0,
             changed: 0,
             modified: 0,
@@ -233,7 +234,8 @@ impl Inode {
             indirect_block: 0,
             double_indirect: 0,
             triple_indirect: 0,
-            extends: extents,
+            is_sparse: Inode::check_sparse(&extents),
+            extents,
             file_entry: Vec::new(),
             nfs,
             acl_block,
@@ -249,16 +251,18 @@ impl Inode {
             changed_precision,
             modified_precision,
             accessed_precision,
-            created,
+            created: ((created_precision as i64) << 32) | created as i64,
             created_precision,
             extended_attributes: HashMap::new(),
             symoblic_link,
         };
         println!("{inode:?}");
         if !inode.flags.contains(&InodeFlags::Inline) {
-            inode.accessed = accessed_or_checksum;
-            inode.changed = changed_or_reference_count;
-            inode.modified = modified_or_inode_extended_attribute;
+            inode.accessed = Inode::complete_time(accessed_or_checksum, accessed_precision);
+            inode.changed = Inode::complete_time(changed_or_reference_count, changed_precision);
+            inode.created = Inode::complete_time(created, created_precision);
+            inode.modified =
+                Inode::complete_time(modified_or_inode_extended_attribute, modified_precision);
         }
 
         let min_size = 48;
@@ -269,6 +273,20 @@ impl Inode {
         }
 
         Ok((input, inode))
+    }
+
+    fn complete_time(timestamp: i32, precision: u32) -> i64 {
+        let mut full_time = timestamp as i64;
+        let bit = 2;
+        let mask = (1 << bit) - 1;
+        let nano_mask = !0u32 << bit;
+        let upper = 32;
+        full_time += ((precision & mask) as i64) << upper;
+        let nanoseconds = ((precision & nano_mask) >> bit) as i64;
+
+        let adjust_nano = 1000000000;
+        full_time = full_time * adjust_nano + nanoseconds;
+        full_time
     }
 
     /// Determine the Inode Filetype
@@ -489,7 +507,7 @@ impl Inode {
         };
         if read_inode {
             remaining = data;
-        } 
+        }
         let (value_start, _) = take(value_data_offset)(remaining)?;
         let (input, value_data) = take(value_size)(value_start)?;
         let mut value = extract_utf8_string(value_data);
@@ -518,7 +536,13 @@ impl Inode {
             };
             // Parse the extended attribute bytes. It should be safe to recursively call this since we do not provide another inode
             // We will also parse the extra data like ref_count, number_blocks, hash, and checksum
-            let ea_attributes = match Inode::parse_extended_attributes(&bytes, reader, 0, true) {
+            let no_additional_inode = 0;
+            let ea_attributes = match Inode::parse_extended_attributes(
+                &bytes,
+                reader,
+                no_additional_inode,
+                true,
+            ) {
                 Ok((_, results)) => results,
                 Err(err) => {
                     panic!(
@@ -531,6 +555,10 @@ impl Inode {
         }
 
         Ok((input, attributes))
+    }
+
+    fn check_sparse(extents: &[Extents]) -> bool {
+        false
     }
 }
 
@@ -562,10 +590,12 @@ mod tests {
         let buf = BufReader::new(reader);
         let mut ext4_reader = Ext4Reader::new(buf, 4096).unwrap();
         let (_, results) = Inode::parse_inode(&test, &mut ext4_reader).unwrap();
-        assert_eq!(results.accessed, 1753321358);
+        assert_eq!(results.accessed, 1753321358964008000);
         assert_eq!(results.inode_type, InodeType::Directory);
         assert_eq!(results.hard_links, 0);
-        assert_eq!(results.created, 1753319678);
+        assert_eq!(results.created, 1753319678856008000);
+        assert_eq!(results.modified, 1753321358964008000);
+        assert_eq!(results.changed, 1753321358964008000);
     }
 
     #[test]
@@ -590,6 +620,13 @@ mod tests {
     }
 
     #[test]
+    fn test_complete_time() {
+        let test = 1753321358;
+        let precision = 400343432;
+        assert_eq!(Inode::complete_time(test, precision), 1753321358100085858);
+    }
+
+    #[test]
     fn test_root_inode() {
         let test = [
             237, 65, 0, 0, 0, 16, 0, 0, 210, 141, 129, 104, 195, 141, 129, 104, 195, 141, 129, 104,
@@ -606,9 +643,9 @@ mod tests {
         let buf = BufReader::new(reader);
         let mut ext4_reader = Ext4Reader::new(buf, 4096).unwrap();
         let (_, results) = Inode::parse_inode(&test, &mut ext4_reader).unwrap();
-        assert_eq!(results.extends.len(), 1);
-        assert_eq!(results.accessed, 1753320914);
-        assert_eq!(results.created, 1753319659);
+        assert_eq!(results.extents.len(), 1);
+        assert_eq!(results.accessed, 1753320914532008000);
+        assert_eq!(results.created, 1753319659000000000);
     }
 
     #[test]
@@ -626,7 +663,8 @@ mod tests {
         let buf = BufReader::new(reader);
         let mut ext4_reader = Ext4Reader::new(buf, 4096).unwrap();
 
-        let (_, results) = Inode::parse_extended_attributes(&tests, &mut ext4_reader, 0, false).unwrap();
+        let (_, results) =
+            Inode::parse_extended_attributes(&tests, &mut ext4_reader, 0, false).unwrap();
         assert_eq!(results.len(), 1);
     }
 
@@ -653,10 +691,10 @@ mod tests {
         let buf = BufReader::new(reader);
         let mut ext4_reader = Ext4Reader::new(buf, 4096).unwrap();
         let (_, results) = Inode::parse_inode(&test, &mut ext4_reader).unwrap();
-        assert_eq!(results.accessed, 1759713524);
+        assert_eq!(results.accessed, 1759713524226734643);
         assert_eq!(results.inode_type, InodeType::SymbolicLink);
         assert_eq!(results.hard_links, 1);
-        assert_eq!(results.created, 1759713524);
+        assert_eq!(results.created, 1759713524225734637);
         assert_eq!(results.symoblic_link, "/opt/osquery/bin/osqueryd")
     }
 }

@@ -17,16 +17,18 @@ use std::{
 
 /*
  * TODO:
- * 1. Make sure u r handling 64 bit upper values. U need to combine <-----
- * 2. Need to test seeking.
- *    - It currently wont work :(
- *    - If you seek from the end of the file and want to read the last 65k bytes. It wont work (i think)
+ * 0. Add is_sparse value to FileInfo. complete "check_sparse" function
+ * 1. Use hashmap instead of array for extents?
+ *    - use get based on current disk position?
+ *    - wont work for seeking though :/
  * 3. More testing
  *    - u have lots of panics. try to trigger them
  * 4. More integration tests
  * 5. Review your cache idea. I dont think it will work for large filesystems
  *    - check memoyr usage on ur 6TB system?
+ *    - it might be fine for now
  * 6. Create 1 more small image. Include files, directorys, links and complex sparse file (sparsed in middle of file?)
+ * 7. Add super arg option to example binary. SHows superblock info <---------
  * Resources:
  * https://blogs.oracle.com/linux/post/understanding-ext4-disk-layout-part-2
  * https://blogs.oracle.com/linux/post/understanding-ext4-disk-layout-part-1
@@ -106,7 +108,7 @@ impl<'ext4, 'reader, T: std::io::Seek + std::io::Read> Ext4ReaderAction<'ext4, '
         let inode_value = Inode::read_inode_table(self, inode)?;
         println!("inode: {inode}. Info: {inode_value:?}");
 
-        let dirs = Directory::read_directory_data(self, &inode_value.extends)?;
+        let dirs = Directory::read_directory_data(self, &inode_value.extents)?;
         let mut info = FileInfo::new(inode_value, dirs, inode as u64);
         if let Some(name) = self.cache_names.get(&info.inode) {
             info.name = name.clone();
@@ -125,6 +127,13 @@ impl<'ext4, 'reader, T: std::io::Seek + std::io::Read> Ext4ReaderAction<'ext4, '
     }
 
     fn hash(&mut self, inode: u32, hashes: &Ext4Hash) -> Result<HashValue, Ext4Error> {
+        if hashes.md5 == false && hashes.sha1 == false && hashes.sha256 == false {
+            return Ok(HashValue {
+                md5: String::new(),
+                sha1: String::new(),
+                sha256: String::new(),
+            });
+        }
         let inode_value = Inode::read_inode_table(self, inode)?;
         if inode_value.inode_type != InodeType::File {
             return Err(Ext4Error::NotAFile);
@@ -138,8 +147,8 @@ impl<'ext4, 'reader, T: std::io::Seek + std::io::Read> Ext4ReaderAction<'ext4, '
         let mut bytes_read = 0;
         // Keep track of our cumulative buffer size when reading in chunks
         let mut buf_size = 0;
-        let mut temp_buf_size = 65536;
         // Read file in small chunks
+        let mut temp_buf_size = 65536;
         loop {
             let mut temp_buf = vec![0u8; temp_buf_size];
             let bytes = match file_reader.read(&mut temp_buf) {
@@ -151,7 +160,7 @@ impl<'ext4, 'reader, T: std::io::Seek + std::io::Read> Ext4ReaderAction<'ext4, '
             };
             bytes_read += bytes;
             if bytes_read + temp_buf_size > inode_value.size as usize {
-                temp_buf_size = inode_value.size as usize - bytes_read;
+                temp_buf_size = bytes_read + temp_buf_size - inode_value.size as usize;
             }
             println!("bytes read: {bytes_read}. Bytes now: {bytes}");
             //println!("{temp_buf:?}");
@@ -164,7 +173,7 @@ impl<'ext4, 'reader, T: std::io::Seek + std::io::Read> Ext4ReaderAction<'ext4, '
                 // Ex: A file less than 4k in size
                 temp_buf = temp_buf[0..inode_value.size as usize].to_vec();
                 println!("{temp_buf:?}");
-            } 
+            }
             if bytes == 0 && bytes_read < inode_value.size as usize {
                 // File is sparse. Remaining bytes are zeros
                 // There are no more extents we can read
@@ -179,7 +188,10 @@ impl<'ext4, 'reader, T: std::io::Seek + std::io::Read> Ext4ReaderAction<'ext4, '
             // If we have, adjust our buffer a little
             if bytes_read > inode_value.size as usize && inode_value.size as usize > buf_size {
                 println!("read too much. adjusting...");
-                println!("taking {} bytes from buffer", inode_value.size as usize - buf_size);
+                println!(
+                    "taking {} bytes from buffer",
+                    inode_value.size as usize - buf_size
+                );
                 temp_buf = temp_buf[0..(inode_value.size as usize - buf_size)].to_vec();
             }
             buf_size += temp_buf.len();
@@ -244,8 +256,8 @@ impl<'ext4, 'reader, T: std::io::Seek + std::io::Read> Ext4ReaderAction<'ext4, '
         }
         Ok(Ext4Reader::file_reader(
             self,
-            &inode_value.extends,
-            inode_value.size as u64,
+            &inode_value.extents,
+            inode_value.size,
         ))
     }
 }
@@ -330,8 +342,8 @@ mod tests {
         let mut ext4_reader = Ext4Reader::new(buf, 4096).unwrap();
         let dir = ext4_reader.root().unwrap();
 
-        assert_eq!(dir.created, 1759689014);
-        assert_eq!(dir.changed, 1759713496);
+        assert_eq!(dir.created, 1759689014000000000);
+        assert_eq!(dir.changed, 1759713496631583423);
         assert_eq!(dir.children.len(), 6);
     }
 
@@ -345,8 +357,8 @@ mod tests {
         ext4_reader.root().unwrap();
         let dir = ext4_reader.read_dir(7634).unwrap();
 
-        assert_eq!(dir.created, 1759689167);
-        assert_eq!(dir.changed, 1759689170);
+        assert_eq!(dir.created, 1759689167899447083);
+        assert_eq!(dir.changed, 1759689170863467296);
         assert_eq!(dir.children.len(), 10);
         assert_eq!(dir.parent_inode, 2);
     }
@@ -361,8 +373,8 @@ mod tests {
         ext4_reader.root().unwrap();
         let dir = ext4_reader.read_dir(7633).unwrap();
 
-        assert_eq!(dir.created, 1759689153);
-        assert_eq!(dir.changed, 1759689156);
+        assert_eq!(dir.created, 1759689153355347892);
+        assert_eq!(dir.changed, 1759689156340368251);
         assert_eq!(dir.children.len(), 165);
         assert_eq!(dir.parent_inode, 2);
     }
@@ -396,10 +408,10 @@ mod tests {
         walk_dir(&root, &mut ext4_reader, &mut cache);
 
         let info = ext4_reader.stat(16).unwrap();
-        assert_eq!(info.created, 1759689156);
-        assert_eq!(info.changed, 1759689156);
-        assert_eq!(info.accessed, 1759689156);
-        assert_eq!(info.modified, 1676375355);
+        assert_eq!(info.created, 1759689156064366369);
+        assert_eq!(info.changed, 1759689156065366375);
+        assert_eq!(info.accessed, 1759689156064366369);
+        assert_eq!(info.modified, 1676375355000000000);
         assert_eq!(
             info.extended_attributes.get("security.selinux").unwrap(),
             "unconfined_u:object_r:unlabeled_t:s0"

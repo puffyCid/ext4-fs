@@ -10,35 +10,36 @@ use nom::{
     bytes::complete::take,
     number::complete::{le_u8, le_u16, le_u32, le_u64, le_u128},
 };
+use serde::Serialize;
 use std::io::BufReader;
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct SuperBlock {
     pub number_inodes: u32,
     pub number_blocks: u32,
-    reserved_blocks: u32,
-    unallocated_blocks: u32,
-    unallocated_inodes: u32,
+    pub reserved_blocks: u32,
+    pub unallocated_blocks: u32,
+    pub unallocated_inodes: u32,
     pub root_group_block_number: u32,
     pub block_size: u32,
     pub fragment_size: u32,
     pub number_blocks_per_block_group: u32,
     pub number_fragments_per_block_group: u32,
     pub number_inodes_per_block_group: u32,
-    last_mount_time: u32,
-    last_write_time: u32,
-    current_mount_count: u16,
-    max_mount_count: u16,
-    signature: u16,
+    pub last_mount_time: u32,
+    pub last_write_time: u32,
+    pub current_mount_count: u16,
+    pub max_mount_count: u16,
+    pub signature: u16,
     pub filesystem_flags: Vec<FsFlags>,
     pub error_status: ErrorStatus,
-    minor_version: u16,
-    last_consistency_time: u32,
-    consistency_interval: u32,
-    creator_os: CreatorOs,
+    pub minor_version: u16,
+    pub last_consistency_time: u32,
+    pub consistency_interval: u32,
+    pub creator_os: CreatorOs,
     pub format_revision: FormatRevision,
-    uid: u16,
-    gid: u16,
+    pub uid: u16,
+    pub gid: u16,
     /**If major version is FormatRevision.DynamicRevision */
     pub first_nonreserved_inode: u32,
     /**If major version is FormatRevision.DynamicRevision */
@@ -52,159 +53,159 @@ pub struct SuperBlock {
     /**If major version is FormatRevision.DynamicRevision */
     pub read_only_flags: Vec<ReadOnlyFlags>,
     /**If major version is FormatRevision.DynamicRevision */
-    filesystem_id: String,
+    pub filesystem_id: String,
     /**If major version is FormatRevision.DynamicRevision */
-    volume_name: String,
+    pub volume_name: String,
     /**If major version is FormatRevision.DynamicRevision */
-    last_mount_path: String,
+    pub last_mount_path: String,
     /**If major version is FormatRevision.DynamicRevision */
-    bitmap_algorithm: u32,
+    pub bitmap_algorithm: u32,
     /**If FeatureFlags.PreAlloc enabled*/
-    preallocated_blocks_per_file: u8,
+    pub preallocated_blocks_per_file: u8,
     /**If FeatureFlags.PreAlloc enabled*/
-    preallocated_blocks_per_directory: u8,
+    pub preallocated_blocks_per_directory: u8,
     /**If FeatureFlags.PreAlloc enabled*/
-    reserved_gdt: u16,
+    pub reserved_gdt: u16,
     /**If FeatureFlags.HasJournal enabled */
-    journal_id: String,
+    pub journal_id: String,
     /**If FeatureFlags.HasJournal enabled */
-    journal_inode: u32,
+    pub journal_inode: u32,
     /**If FeatureFlags.HasJournal enabled */
-    journal_device: u32,
+    pub journal_device: u32,
     /**If FeatureFlags.HasJournal enabled */
-    orphan_inode_list: u32,
+    pub orphan_inode_list: u32,
     /**If FeatureFlags.HasJournal enabled */
-    hash_tree_seed: Vec<u32>,
+    pub hash_tree_seed: Vec<u32>,
     /**If FeatureFlags.HasJournal enabled */
-    hash_version: u8,
+    pub hash_version: u8,
     /**If FeatureFlags.HasJournal enabled */
-    journal_backup_type: u8,
+    pub journal_backup_type: u8,
     /**If FeatureFlags.HasJournal enabled */
-    group_descriptor_size: u16,
+    pub group_descriptor_size: u16,
     /**If FeatureFlags.HasJournal enabled */
-    default_mount_options: u32,
+    pub default_mount_options: u32,
     /**If FeatureFlags.HasJournal enabled */
-    first_metablock_group: u32,
+    pub first_metablock_group: u32,
     /**If FeatureFlags.HasJournal enabled */
-    filesystem_creation: u32,
+    pub filesystem_creation: u32,
     /**If FeatureFlags.HasJournal enabled */
-    backup_journal_inodes: Vec<u32>,
+    pub backup_journal_inodes: Vec<u32>,
     /**If IncompatFlags.Bit64 enabled */
-    upper_number_blocks: u32,
+    pub upper_number_blocks: u32,
     /**If IncompatFlags.Bit64 enabled */
-    upper_number_reserved_blocks: u32,
+    pub upper_number_reserved_blocks: u32,
     /**If IncompatFlags.Bit64 enabled */
-    upper_unallocated_blocks: u32,
+    pub upper_unallocated_blocks: u32,
     /**If IncompatFlags.Bit64 enabled */
-    minimum_inode_size: u16,
+    pub minimum_inode_size: u16,
     /**If IncompatFlags.Bit64 enabled */
-    reserved_inode_size: u16,
+    pub reserved_inode_size: u16,
     /**If IncompatFlags.Bit64 enabled */
-    misc_flags: u32,
+    pub misc_flags: u32,
     /**If IncompatFlags.Bit64 enabled */
-    raid_stride: u16,
+    pub raid_stride: u16,
     /**If IncompatFlags.Bit64 enabled */
-    mount_protection_update_interval: u16,
+    pub mount_protection_update_interval: u16,
     /**If IncompatFlags.Bit64 enabled */
-    block_mount_protection: u64,
+    pub block_mount_protection: u64,
     /**If IncompatFlags.Bit64 enabled */
-    blocks_on_all_data_disks: u32,
+    pub blocks_on_all_data_disks: u32,
     /**If IncompatFlags.Bit64 enabled */
-    flex_block_group_size: u8,
+    pub flex_block_group_size: u8,
     /**If IncompatFlags.Bit64 enabled */
-    checksum_type: Checksum,
+    pub checksum_type: Checksum,
     /**If IncompatFlags.Bit64 enabled */
-    encryption_level: u8,
+    pub encryption_level: u8,
     /**If IncompatFlags.Bit64 enabled */
     _padding: u8,
     /**If IncompatFlags.Bit64 enabled */
-    s_kbytes_written: u64,
+    pub s_kbytes_written: u64,
     /**If IncompatFlags.Bit64 enabled */
-    inode_snapshot_list: u32,
+    pub inode_snapshot_list: u32,
     /**If IncompatFlags.Bit64 enabled */
-    active_snapshot_id: u32,
+    pub active_snapshot_id: u32,
     /**If IncompatFlags.Bit64 enabled */
-    snapshot_reserved_blocks_count: u64,
+    pub snapshot_reserved_blocks_count: u64,
     /**If IncompatFlags.Bit64 enabled */
-    inode_snapshot_list_count: u32,
+    pub inode_snapshot_list_count: u32,
     /**If IncompatFlags.Bit64 enabled */
-    error_count: u32,
+    pub error_count: u32,
     /**If IncompatFlags.Bit64 enabled */
-    first_error_time: u32,
+    pub first_error_time: u32,
     /**If IncompatFlags.Bit64 enabled */
-    first_error_ino: u32,
+    pub first_error_ino: u32,
     /**If IncompatFlags.Bit64 enabled */
-    first_error_block: u64,
+    pub first_error_block: u64,
     /**If IncompatFlags.Bit64 enabled */
-    first_error_function: Vec<u8>,
+    pub first_error_function: Vec<u8>,
     /**If IncompatFlags.Bit64 enabled */
-    first_error_line: u32,
+    pub first_error_line: u32,
     /**If IncompatFlags.Bit64 enabled */
-    last_error_time: u32,
+    pub last_error_time: u32,
     /**If IncompatFlags.Bit64 enabled */
-    last_error_ino: u32,
+    pub last_error_ino: u32,
     /**If IncompatFlags.Bit64 enabled */
-    last_error_line: u32,
+    pub last_error_line: u32,
     /**If IncompatFlags.Bit64 enabled */
-    last_error_block: u64,
+    pub last_error_block: u64,
     /**If IncompatFlags.Bit64 enabled */
-    last_error_func: Vec<u8>,
+    pub last_error_func: Vec<u8>,
     /**If IncompatFlags.Bit64 enabled */
-    mount_options: Vec<u8>,
+    pub mount_options: Vec<u8>,
     /**If IncompatFlags.Bit64 enabled */
-    usr_quota_inum: u32,
+    pub usr_quota_inum: u32,
     /**If IncompatFlags.Bit64 enabled */
-    grp_quota_inum: u32,
+    pub grp_quota_inum: u32,
     /**If IncompatFlags.Bit64 enabled */
-    overhead_clusters: u32,
+    pub overhead_clusters: u32,
     /**If IncompatFlags.Bit64 enabled */
-    backup_bgs: Vec<u32>,
+    pub backup_bgs: Vec<u32>,
     /**If IncompatFlags.Bit64 enabled */
-    encrypt_algorithms: u32,
+    pub encrypt_algorithms: u32,
     /**If IncompatFlags.Bit64 enabled */
-    encrypt_password_salt: u128,
+    pub encrypt_password_salt: u128,
     /**If IncompatFlags.Bit64 enabled */
-    lpf_ino: u32,
+    pub lpf_ino: u32,
     /**If IncompatFlags.Bit64 enabled */
-    prj_quota_inum: u32,
+    pub prj_quota_inum: u32,
     /**If IncompatFlags.Bit64 enabled */
-    checksum_seed: u32,
+    pub checksum_seed: u32,
     /**If IncompatFlags.Bit64 enabled */
-    wtime_hi: u8,
+    pub wtime_hi: u8,
     /**If IncompatFlags.Bit64 enabled */
-    mtime_hi: u8,
+    pub mtime_hi: u8,
     /**If IncompatFlags.Bit64 enabled */
-    mfs_time_hi: u8,
+    pub mfs_time_hi: u8,
     /**If IncompatFlags.Bit64 enabled */
-    lastcheck_hi: u8,
+    pub lastcheck_hi: u8,
     /**If IncompatFlags.Bit64 enabled */
-    first_error_time_hi: u8,
+    pub first_error_time_hi: u8,
     /**If IncompatFlags.Bit64 enabled */
-    last_error_time_hi: u8,
+    pub last_error_time_hi: u8,
     /**If IncompatFlags.Bit64 enabled */
-    first_error_code: u8,
+    pub first_error_code: u8,
     /**If IncompatFlags.Bit64 enabled */
-    last_error_code: u8,
+    pub last_error_code: u8,
     /**If IncompatFlags.Bit64 enabled */
-    encoding: u16,
+    pub encoding: u16,
     /**If IncompatFlags.Bit64 enabled */
-    encoding_flags: u16,
+    pub encoding_flags: u16,
     /**If IncompatFlags.Bit64 enabled */
-    orphan_file_inum: u32,
+    pub orphan_file_inum: u32,
     /**If IncompatFlags.Bit64 enabled */
-    reserved: Vec<u8>,
+    pub reserved: Vec<u8>,
     /**If IncompatFlags.Bit64 enabled */
-    checksum: u32,
+    pub checksum: u32,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize)]
 pub enum FsFlags {
     Clean,
     HasErrors,
     RecoveringOrphanInodes,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize)]
 pub enum ErrorStatus {
     Continue,
     RemountReadOnly,
@@ -212,7 +213,7 @@ pub enum ErrorStatus {
     Unknown,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize)]
 pub enum CreatorOs {
     Linux,
     GnuHurd,
@@ -222,14 +223,14 @@ pub enum CreatorOs {
     Unknown,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize)]
 pub enum FormatRevision {
     OldRevision,
     DynamicRevision,
     Unknown,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize)]
 pub enum FeatureFlags {
     PreAlloc,
     ImagicInodes,
@@ -246,7 +247,7 @@ pub enum FeatureFlags {
     OrphanFiles,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Serialize)]
 pub enum IncompatFlags {
     Compression,
     FileType,
@@ -266,7 +267,7 @@ pub enum IncompatFlags {
     CaseFold,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize)]
 pub enum ReadOnlyFlags {
     SparseSuper,
     LargeFile,
@@ -287,7 +288,7 @@ pub enum ReadOnlyFlags {
     OrphanPresent,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize)]
 pub enum Checksum {
     /**0x1edc6f41 */
     Castagnoli,

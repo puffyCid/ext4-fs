@@ -109,21 +109,17 @@ fn filesystem_reader(input: &str, md5: bool, sha1: bool, sha256: bool, writer: &
         extended_attributes: root.extended_attributes.clone(),
         inode_type: root.inode_type,
         created: Utc
-            .timestamp_opt(root.created as i64, 0)
-            .unwrap()
-            .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+            .timestamp_nanos(root.created)
+            .to_rfc3339_opts(chrono::SecondsFormat::Nanos, true),
         modified: Utc
-            .timestamp_opt(root.modified as i64, 0)
-            .unwrap()
-            .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+            .timestamp_nanos(root.modified)
+            .to_rfc3339_opts(chrono::SecondsFormat::Nanos, true),
         accessed: Utc
-            .timestamp_opt(root.accessed as i64, 0)
-            .unwrap()
-            .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+            .timestamp_nanos(root.accessed)
+            .to_rfc3339_opts(chrono::SecondsFormat::Nanos, true),
         changed: Utc
-            .timestamp_opt(root.changed as i64, 0)
-            .unwrap()
-            .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+            .timestamp_nanos(root.changed)
+            .to_rfc3339_opts(chrono::SecondsFormat::Nanos, true),
         deleted: Utc
             .timestamp_opt(root.deleted as i64, 0)
             .unwrap()
@@ -204,6 +200,7 @@ fn walk_dir<T: std::io::Seek + std::io::Read>(
             let info = reader.read_dir(entry.inode).unwrap();
             let directory = cache.join("/");
             cache.push(info.name.clone());
+
             let value = TimelineFiles {
                 fullpath: cache.join("/"),
                 directory,
@@ -216,21 +213,17 @@ fn walk_dir<T: std::io::Seek + std::io::Read>(
                 extended_attributes: info.extended_attributes.clone(),
                 inode_type: info.inode_type,
                 created: Utc
-                    .timestamp_opt(info.created as i64, 0)
-                    .unwrap()
-                    .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+                    .timestamp_nanos(info.created)
+                    .to_rfc3339_opts(chrono::SecondsFormat::Nanos, true),
                 modified: Utc
-                    .timestamp_opt(info.modified as i64, 0)
-                    .unwrap()
-                    .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+                    .timestamp_nanos(info.modified)
+                    .to_rfc3339_opts(chrono::SecondsFormat::Nanos, true),
                 accessed: Utc
-                    .timestamp_opt(info.accessed as i64, 0)
-                    .unwrap()
-                    .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+                    .timestamp_nanos(info.accessed)
+                    .to_rfc3339_opts(chrono::SecondsFormat::Nanos, true),
                 changed: Utc
-                    .timestamp_opt(info.changed as i64, 0)
-                    .unwrap()
-                    .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+                    .timestamp_nanos(info.changed)
+                    .to_rfc3339_opts(chrono::SecondsFormat::Nanos, true),
                 deleted: Utc
                     .timestamp_opt(info.deleted as i64, 0)
                     .unwrap()
@@ -253,6 +246,7 @@ fn walk_dir<T: std::io::Seek + std::io::Read>(
             let hash_value = reader.hash(entry.inode, hash).unwrap();
 
             let directory = cache.join("/");
+
             let value = TimelineFiles {
                 fullpath: format!("{}/{}", cache.join("/"), entry.name),
                 directory,
@@ -265,21 +259,17 @@ fn walk_dir<T: std::io::Seek + std::io::Read>(
                 extended_attributes: info.extended_attributes,
                 inode_type: info.inode_type,
                 created: Utc
-                    .timestamp_opt(info.created as i64, 0)
-                    .unwrap()
-                    .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+                    .timestamp_nanos(info.created)
+                    .to_rfc3339_opts(chrono::SecondsFormat::Nanos, true),
                 modified: Utc
-                    .timestamp_opt(info.modified as i64, 0)
-                    .unwrap()
-                    .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+                    .timestamp_nanos(info.modified)
+                    .to_rfc3339_opts(chrono::SecondsFormat::Nanos, true),
                 accessed: Utc
-                    .timestamp_opt(info.accessed as i64, 0)
-                    .unwrap()
-                    .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+                    .timestamp_nanos(info.accessed)
+                    .to_rfc3339_opts(chrono::SecondsFormat::Nanos, true),
                 changed: Utc
-                    .timestamp_opt(info.changed as i64, 0)
-                    .unwrap()
-                    .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+                    .timestamp_nanos(info.changed)
+                    .to_rfc3339_opts(chrono::SecondsFormat::Nanos, true),
                 deleted: Utc
                     .timestamp_opt(info.deleted as i64, 0)
                     .unwrap()
@@ -307,21 +297,17 @@ fn walk_dir<T: std::io::Seek + std::io::Read>(
             extended_attributes: info.extended_attributes,
             inode_type: info.inode_type,
             created: Utc
-                .timestamp_opt(info.created as i64, 0)
-                .unwrap()
-                .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+                .timestamp_nanos(info.created)
+                .to_rfc3339_opts(chrono::SecondsFormat::Nanos, true),
             modified: Utc
-                .timestamp_opt(info.modified as i64, 0)
-                .unwrap()
-                .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+                .timestamp_nanos(info.modified)
+                .to_rfc3339_opts(chrono::SecondsFormat::Nanos, true),
             accessed: Utc
-                .timestamp_opt(info.accessed as i64, 0)
-                .unwrap()
-                .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+                .timestamp_nanos(info.accessed)
+                .to_rfc3339_opts(chrono::SecondsFormat::Nanos, true),
             changed: Utc
-                .timestamp_opt(info.changed as i64, 0)
-                .unwrap()
-                .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+                .timestamp_nanos(info.changed)
+                .to_rfc3339_opts(chrono::SecondsFormat::Nanos, true),
             deleted: Utc
                 .timestamp_opt(info.deleted as i64, 0)
                 .unwrap()

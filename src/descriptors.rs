@@ -18,7 +18,7 @@ pub(crate) struct Descriptor {
     /**If IncompatFlags.Bit64 enabled then contains lower 32 bit value */
     pub(crate) bitmap_inode: u32,
     /**If IncompatFlags.Bit64 enabled then contains lower 32 bit value */
-    pub(crate) inode_table_block: u32,
+    pub(crate) inode_table_block: u64,
     /**Count of unallocated blocks. If IncompatFlags.Bit64 enabled then contains lower 16 bit value  */
     unallocated_blocks: u16,
     /**Count of unallocated inodes. If IncompatFlags.Bit64 enabled then contains lower 16 bit value */
@@ -140,7 +140,7 @@ impl Descriptor {
         let mut info = Descriptor {
             bitmap_block,
             bitmap_inode,
-            inode_table_block,
+            inode_table_block: (0 << 32) | inode_table_block as u64,
             unallocated_blocks,
             unallocated_inodes,
             directories,
@@ -183,6 +183,7 @@ impl Descriptor {
         info.upper_bitmap_block = upper_bitmap_block;
         info.upper_bitmap_inode = upper_bitmap_inode;
         info.upper_inode_table_block = upper_inode_table_block;
+        info.inode_table_block = ((upper_inode_table_block as u64) << 32) | info.inode_table_block;
         info.upper_unallocated_blocks = upper_unallocated_blocks;
         info.upper_unallocated_inodes = upper_unallocated_inodes;
         info.upper_directories = upper_directories;
