@@ -101,13 +101,17 @@ impl<'ext4, 'reader, T: std::io::Seek + std::io::Read> Ext4ReaderAction<'ext4, '
         let inode_value = Inode::read_inode_table(self, inode)?;
         // println!("inode: {inode}. Info: {inode_value:?}");
 
-        let dirs = Directory::read_directory_data(self, &inode_value.extents)?;
-        let mut info = FileInfo::new(inode_value, dirs, inode as u64);
-        if let Some(name) = self.cache_names.get(&info.inode) {
-            info.name = name.clone();
+        if let Some(extent) = &inode_value.extents {
+            let dirs = Directory::read_directory_data(self, extent)?;
+            let mut info = FileInfo::new(inode_value, dirs, inode as u64);
+            if let Some(name) = self.cache_names.get(&info.inode) {
+                info.name = name.clone();
+            }
+            update_cache(&mut self.cache_names, &info);
+            return Ok(info);
         }
-        update_cache(&mut self.cache_names, &info);
-        Ok(info)
+        error!("[ext4-fs] No extent data found. Cannot read directory");
+        return Err(Ext4Error::Directory);
     }
 
     fn superblock(&mut self) -> Result<SuperBlock, Ext4Error> {
@@ -241,11 +245,11 @@ impl<'ext4, 'reader, T: std::io::Seek + std::io::Read> Ext4ReaderAction<'ext4, '
         if inode_value.inode_type != InodeType::File {
             return Err(Ext4Error::NotAFile);
         }
-        Ok(Ext4Reader::file_reader(
-            self,
-            &inode_value.extents,
-            inode_value.size,
-        ))
+        if let Some(extent) = inode_value.extents {
+            return Ok(Ext4Reader::file_reader(self, &extent, inode_value.size));
+        }
+        error!("[ext4-fs] No extent data found. Cannot read directory");
+        return Err(Ext4Error::Directory);
     }
 }
 

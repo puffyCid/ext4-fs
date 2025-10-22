@@ -1,8 +1,7 @@
-use std::collections::HashMap;
-
 use crate::error::Ext4Error;
 use log::error;
 use nom::number::complete::{le_u16, le_u32};
+use std::collections::BTreeMap;
 
 #[derive(Debug, Clone)]
 pub(crate) struct Extents {
@@ -13,7 +12,7 @@ pub(crate) struct Extents {
     generation: u32,
     pub(crate) extent_descriptors: Vec<ExtentDescriptor>,
     pub(crate) index_descriptors: Vec<IndexDescriptor>,
-    pub(crate) extent_descriptor_list: HashMap<u32, ExtentDescriptor>,
+    pub(crate) extent_descriptor_list: BTreeMap<u32, ExtentDescriptor>,
 }
 
 #[derive(Debug, Clone)]
@@ -22,6 +21,7 @@ pub(crate) struct ExtentDescriptor {
     pub(crate) number_of_blocks: u16,
     pub(crate) block_number: u64,
     pub(crate) next_logical_block_number: u32,
+    pub(crate) block_diff: u32,
     pub(crate) upper_part_physical_block_number: u16,
     pub(crate) lower_part_physical_block_number: u32,
 }
@@ -64,7 +64,7 @@ impl Extents {
             generation,
             extent_descriptors: Vec::new(),
             index_descriptors: Vec::new(),
-            extent_descriptor_list: HashMap::new(),
+            extent_descriptor_list: BTreeMap::new(),
         };
         let mut count = 0;
         // If depth = 0 then we have array of extents. These are the "leafs" of our b-tree. It contains data we want
@@ -88,6 +88,7 @@ impl Extents {
                     lower_part_physical_block_number,
                     next_logical_block_number: 0,
                     block_number,
+                    block_diff: 0,
                 };
                 extent.extent_descriptors.push(desc);
                 continue;
@@ -114,6 +115,15 @@ impl Extents {
         while let Some(value) = extent_iterator.next() {
             if let Some(next_logical_block) = extent_iterator.peek() {
                 value.next_logical_block_number = next_logical_block.logical_block_number;
+                if value.next_logical_block_number
+                    - (value.logical_block_number + value.number_of_blocks as u32)
+                    > 0
+                {
+                    // If the diff is greater than 0.
+                    // Then sparse data exists
+                    value.block_diff = value.next_logical_block_number
+                        - (value.logical_block_number + value.number_of_blocks as u32);
+                }
             }
             extent
                 .extent_descriptor_list

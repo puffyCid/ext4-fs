@@ -16,49 +16,46 @@ impl Directory {
     /// Read the directory attribute data associated with an directory
     pub(crate) fn read_directory_data<T: std::io::Seek + std::io::Read>(
         reader: &mut Ext4Reader<T>,
-        extents: &[Extents],
+        extent: &Extents,
     ) -> Result<Vec<HashMap<u64, Directory>>, Ext4Error> {
         let mut dirs = Vec::new();
         // println!("Looping extents: {extents:?}");
-        for extent in extents {
-            if extent.depth == 0 {
-                for entry in &extent.extent_descriptors {
-                    let offset =
-                        entry.lower_part_physical_block_number as u64 * reader.blocksize as u64;
-                    let size = entry.number_of_blocks as u64 * reader.blocksize as u64;
-                    let bytes = read_bytes(offset, size, &mut reader.fs)?;
-
-                    let dir = match Directory::parse_linear_directory(&bytes) {
-                        Ok((_, result)) => result,
-                        Err(err) => {
-                            error!("[ext4-fs] Failed to parse linear directory: {err:?}");
-                            continue;
-                        }
-                    };
-                    dirs.push(dir);
-                    continue;
-                }
-            }
-            for entry in &extent.index_descriptors {
+        if extent.depth == 0 {
+            for entry in &extent.extent_descriptors {
                 let offset =
                     entry.lower_part_physical_block_number as u64 * reader.blocksize as u64;
-                let bytes = read_bytes(offset, reader.blocksize as u64, &mut reader.fs)?;
-                let extents = Extents::read_extents(&bytes)?;
-                for entry in &extents.extent_descriptors {
-                    let offset =
-                        entry.lower_part_physical_block_number as u64 * reader.blocksize as u64;
-                    let size = entry.number_of_blocks as u64 * reader.blocksize as u64;
-                    let bytes = read_bytes(offset, size, &mut reader.fs)?;
+                let size = entry.number_of_blocks as u64 * reader.blocksize as u64;
+                let bytes = read_bytes(offset, size, &mut reader.fs)?;
 
-                    let dir = match Directory::parse_linear_directory(&bytes) {
-                        Ok((_, result)) => result,
-                        Err(err) => {
-                            error!("[ext4-fs] Failed to parse linear directory: {err:?}");
-                            continue;
-                        }
-                    };
-                    dirs.push(dir);
-                }
+                let dir = match Directory::parse_linear_directory(&bytes) {
+                    Ok((_, result)) => result,
+                    Err(err) => {
+                        error!("[ext4-fs] Failed to parse linear directory: {err:?}");
+                        continue;
+                    }
+                };
+                dirs.push(dir);
+                continue;
+            }
+        }
+        for entry in &extent.index_descriptors {
+            let offset = entry.lower_part_physical_block_number as u64 * reader.blocksize as u64;
+            let bytes = read_bytes(offset, reader.blocksize as u64, &mut reader.fs)?;
+            let extents = Extents::read_extents(&bytes)?;
+            for entry in &extents.extent_descriptors {
+                let offset =
+                    entry.lower_part_physical_block_number as u64 * reader.blocksize as u64;
+                let size = entry.number_of_blocks as u64 * reader.blocksize as u64;
+                let bytes = read_bytes(offset, size, &mut reader.fs)?;
+
+                let dir = match Directory::parse_linear_directory(&bytes) {
+                    Ok((_, result)) => result,
+                    Err(err) => {
+                        error!("[ext4-fs] Failed to parse linear directory: {err:?}");
+                        continue;
+                    }
+                };
+                dirs.push(dir);
             }
         }
 

@@ -30,7 +30,7 @@ pub struct Inode {
     indirect_block: u32,
     double_indirect: u32,
     triple_indirect: u32,
-    pub(crate) extents: Vec<Extents>,
+    pub(crate) extents: Option<Extents>,
     file_entry: Vec<u8>,
     nfs: u32,
     acl_block: u32,
@@ -222,7 +222,7 @@ impl Inode {
             double_indirect: 0,
             triple_indirect: 0,
             is_sparse: Inode::check_sparse(&extents),
-            extents,
+            extents: extents.get(0).cloned(),
             file_entry: Vec::new(),
             nfs,
             acl_block,
@@ -243,6 +243,7 @@ impl Inode {
             extended_attributes: HashMap::new(),
             symoblic_link,
         };
+
         if !inode.flags.contains(&InodeFlags::Inline) {
             inode.accessed = Inode::complete_time(accessed_or_checksum, accessed_precision);
             inode.changed = Inode::complete_time(changed_or_reference_count, changed_precision);
@@ -625,7 +626,10 @@ mod tests {
         let buf = BufReader::new(reader);
         let mut ext4_reader = Ext4Reader::new(buf, 4096).unwrap();
         let (_, results) = Inode::parse_inode(&test, &mut ext4_reader).unwrap();
-        assert_eq!(results.extents.len(), 1);
+        assert_eq!(
+            results.extents.as_ref().unwrap().extent_descriptors.len(),
+            1
+        );
         assert_eq!(results.accessed, 1753320914532008000);
         assert_eq!(results.created, 1753319659000000000);
     }
