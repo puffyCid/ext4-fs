@@ -1,6 +1,5 @@
 use crate::{
-    descriptors::Descriptor, extents::Extents, extfs::Ext4Reader, superblock::block::IncompatFlags,
-    utils::bytes::read_bytes,
+    extents::Extents, extfs::Ext4Reader, superblock::block::IncompatFlags, utils::bytes::read_bytes,
 };
 use log::error;
 use std::io::{self, BufReader, Error, Read, Seek};
@@ -12,12 +11,9 @@ where
     reader: &'reader mut BufReader<T>,
     blocksize: u64,
     number_blocks: u32,
-    inode_size: u16,
     inodes_per_group: u32,
     incompat_flags: Vec<IncompatFlags>,
-    descriptors: Vec<Descriptor>,
     extents: Vec<Extents>,
-    current_inode: u64,
     disk_position: u64,
     file_position: u64,
     file_size: u64,
@@ -33,13 +29,9 @@ impl<'reader, T: io::Seek + io::Read> Ext4Reader<T> {
             reader: &mut self.fs,
             blocksize: self.blocksize as u64,
             number_blocks: self.number_blocks,
-            inode_size: self.inode_size,
             inodes_per_group: self.inodes_per_group,
             incompat_flags: self.incompat_flags.clone(),
-            // Unwrap is ok because self.descriptors should not be None because Ext4Reader must be initialized with it
-            descriptors: self.descriptors.as_ref().unwrap_or(&Vec::new()).to_vec(),
             extents: extents.to_vec(),
-            current_inode: self.current_inode,
             disk_position: 0,
             file_position: 0,
             file_size,
@@ -56,7 +48,7 @@ where
         // The max depth limit is 3
         let max_extents = 3;
         let mut limit = 0;
-        println!("extents: {:?}", self.extents);
+        //println!("extents: {:?}", self.extents);
         for extent in &mut self.extents {
             let mut indexes = extent.index_descriptors.clone();
 
@@ -101,22 +93,32 @@ where
                 let mut total_bytes = Vec::new();
                 // If the caller just wants to stream the file
                 // We can read small amounts at a time
-                let mut bytes = Vec::new();
+                let mut bytes;
 
-                let mut next_extent = false;
                 let mut total_blocks = 0;
                 for entry in &extent.extent_descriptors {
                     total_blocks += entry.number_of_blocks as u64 * self.blocksize;
                     let max_position = entry.number_of_blocks as u64 * self.blocksize;
+                    println!(
+                        "startiing file position: {}. total blocks: {total_blocks}. max position: {max_position}. disk position: {}",
+                        self.file_position, self.disk_position
+                    );
+
+                    // If our position does not match the logical block value
+                    // Then we are technically not reading at the correct spot
+                    // Commonly seen with sparse files
+                    // Extents point to the data and not sparse values
+                    // We need to add sparse data ourselves (zeros)
+                    let sparse_size = entry.logical_block_number as u64 * self.blocksize;
 
                     if self.file_position >= total_blocks {
-                        println!(
-                            "file position: {}. total blocks: {total_blocks}",
-                            self.file_position
-                        );
-                        if self.disk_position >= max_position {
+                        if self.disk_position >= max_position && self.disk_position >= sparse_size {
                             self.disk_position -= max_position;
                         }
+                        println!(
+                            "now file position: {}. total blocks: {total_blocks}. max position: {max_position}. disk position: {}. sparse: {sparse_size}",
+                            self.file_position, self.disk_position
+                        );
                         continue;
                     }
                     // If our position does not match the logical block value
@@ -124,46 +126,37 @@ where
                     // Commonly seen with sparse files
                     // Extents point to the data and not sparse values
                     // We need to add sparse data ourselves (zeros)
-                    let sparse_size = entry.logical_block_number as u64 * self.blocksize;
+                    //let sparse_size = entry.logical_block_number as u64 * self.blocksize;
                     println!(
-                        "disk position now: {}. Sparse is {sparse_size}. file position is: {}",
+                        "disk position now: {}. Sparse is {sparse_size}. file position is: {}. max is: {max_position}",
                         self.disk_position, self.file_position
                     );
-                    if self.file_position < sparse_size {
+                    if self.file_position < sparse_size && self.disk_position < sparse_size {
                         self.disk_position += size as u64;
-                        self.file_position += size as u64;
+                        //self.file_position += size as u64;
                         return Ok(size);
-                    } else if self.file_position == sparse_size {
-                        println!("reset!");
+                    } else if self.file_position == sparse_size || self.disk_position == sparse_size
+                    {
                         // Reading sparse "data" is complete. Can start to read the actual data now
                         self.disk_position = 0;
                     }
 
                     // If our current position is larger than allocated blocks in our current extent
                     // We must move to the next one. We have read all of the data in the current extent
-                    if self.disk_position >= max_position {
+                    if self.disk_position >= max_position && self.file_position != 0 {
                         println!(
                             "current position: {}. Extent max position: {}",
                             self.disk_position,
                             (entry.number_of_blocks as u64 * self.blocksize)
                         );
                         //next_extent = true;
-                        // If we jumped to a really offset using seek
+                        // If we jumped to a really large offset using seek
                         // We need to preserve the offset we are at in the next extent block
                         // Ex: For a 200MB file we seek to the end -10 bytes
                         // We loop to the next extent, but our offset should not reset
                         // We keep subtracting until we get to our correct extent
                         // Otherwise if the values are equal we reset to position and start reading at the next extent
                         self.disk_position -= entry.number_of_blocks as u64 * self.blocksize;
-                        /*
-                        let additional_offset =
-                            self.disk_position - (entry.number_of_blocks as u64 * self.blocksize);
-                        if additional_offset != 0 {
-                            self.disk_position = additional_offset;
-                        } else {
-                            // Reset our position since we are now at a new extent
-                            self.disk_position = 0;
-                        }*/
 
                         // Go the next extent
                         continue;
@@ -200,25 +193,7 @@ where
                         continue;
                     }
 
-                    // We read bytes from the next extent
-                    // We need remove the old one now
-                    if next_extent {
-                        break;
-                    }
                     buf[..size].copy_from_slice(&bytes);
-                    return Ok(size);
-                }
-
-                // Remove old extent. We read all the data from the extent.
-                if next_extent && !extent.extent_descriptors.is_empty() {
-                    if total_bytes.is_empty() {
-                        if bytes.len() != size {
-                            buf[..bytes.len()].copy_from_slice(&bytes);
-                        } else {
-                            buf[..size].copy_from_slice(&bytes);
-                        }
-                    }
-                    extent.extent_descriptors.remove(0);
                     return Ok(size);
                 }
 

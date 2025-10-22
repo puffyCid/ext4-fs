@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::error::Ext4Error;
 use log::error;
 use nom::number::complete::{le_u16, le_u32};
@@ -11,7 +13,7 @@ pub(crate) struct Extents {
     generation: u32,
     pub(crate) extent_descriptors: Vec<ExtentDescriptor>,
     pub(crate) index_descriptors: Vec<IndexDescriptor>,
-    // checksum: u32,
+    pub(crate) extent_descriptor_list: HashMap<u32, ExtentDescriptor>,
 }
 
 #[derive(Debug, Clone)]
@@ -19,6 +21,7 @@ pub(crate) struct ExtentDescriptor {
     pub(crate) logical_block_number: u32,
     pub(crate) number_of_blocks: u16,
     pub(crate) block_number: u64,
+    pub(crate) next_logical_block_number: u32,
     pub(crate) upper_part_physical_block_number: u16,
     pub(crate) lower_part_physical_block_number: u32,
 }
@@ -61,7 +64,7 @@ impl Extents {
             generation,
             extent_descriptors: Vec::new(),
             index_descriptors: Vec::new(),
-            //checksum: 0,
+            extent_descriptor_list: HashMap::new(),
         };
         let mut count = 0;
         // If depth = 0 then we have array of extents. These are the "leafs" of our b-tree. It contains data we want
@@ -76,9 +79,6 @@ impl Extents {
                 let (input, upper_part_physical_block_number) = le_u16(input)?;
                 let (input, lower_part_physical_block_number) = le_u32(input)?;
                 remaining = input;
-                // let adjust = 0x1000;
-                //let block_number = lower_part_physical_block_number as u64
-                //    + adjust * upper_part_physical_block_number as u64;
                 let block_number = (upper_part_physical_block_number as u64) << 32
                     | lower_part_physical_block_number as u64;
                 let desc = ExtentDescriptor {
@@ -86,6 +86,7 @@ impl Extents {
                     number_of_blocks,
                     upper_part_physical_block_number,
                     lower_part_physical_block_number,
+                    next_logical_block_number: 0,
                     block_number,
                 };
                 extent.extent_descriptors.push(desc);
@@ -99,9 +100,6 @@ impl Extents {
             let (input, upper_part_physical_block_number) = le_u16(input)?;
             let (input, _unknown) = le_u16(input)?;
             remaining = input;
-            // let adjust = 0x1000;
-            // let block_number = lower_part_physical_block_number as u64
-            //    + adjust * upper_part_physical_block_number as u64;
             let block_number = (upper_part_physical_block_number as u64) << 32
                 | lower_part_physical_block_number as u64;
             let index = IndexDescriptor {
@@ -111,6 +109,15 @@ impl Extents {
                 block_number,
             };
             extent.index_descriptors.push(index);
+        }
+        let mut extent_iterator = extent.extent_descriptors.iter_mut().peekable();
+        while let Some(value) = extent_iterator.next() {
+            if let Some(next_logical_block) = extent_iterator.peek() {
+                value.next_logical_block_number = next_logical_block.logical_block_number;
+            }
+            extent
+                .extent_descriptor_list
+                .insert(value.logical_block_number, value.clone());
         }
 
         Ok((input, extent))
@@ -146,6 +153,7 @@ mod tests {
         assert_eq!(results.max_extents_or_indexes, 4);
 
         assert_eq!(results.depth, 0);
+        assert_eq!(results.extent_descriptor_list.len(), 1);
         assert_eq!(results.extent_descriptors[0].logical_block_number, 0);
         assert_eq!(
             results.extent_descriptors[0].lower_part_physical_block_number,

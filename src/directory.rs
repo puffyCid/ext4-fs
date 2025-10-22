@@ -19,7 +19,7 @@ impl Directory {
         extents: &[Extents],
     ) -> Result<Vec<HashMap<u64, Directory>>, Ext4Error> {
         let mut dirs = Vec::new();
-        println!("Looping extents: {extents:?}");
+        // println!("Looping extents: {extents:?}");
         for extent in extents {
             if extent.depth == 0 {
                 for entry in &extent.extent_descriptors {
@@ -100,9 +100,6 @@ impl Directory {
                 file_type: Directory::get_file_type(file_type),
                 name,
             };
-            if dir.file_type == FileType::Unknown {
-                panic!("{file_type}");
-            }
             dirs.insert(inode as u64, dir);
         }
 

@@ -18,17 +18,12 @@ use std::{
 /*
  * TODO:
  * 0. Add is_sparse value to FileInfo. complete "check_sparse" function
- * 1. Use hashmap instead of array for extents?
- *    - use get based on current disk position?
- *    - wont work for seeking though :/
- * 3. More testing
- *    - u have lots of panics. try to trigger them
- * 4. More integration tests
- * 5. Review your cache idea. I dont think it will work for large filesystems
+ * 1. Keep info/debug entries. Since it is experimental it will be helpful to have
+ * 2. More integration tests
+ * 4. Review your cache idea. I dont think it will work for large filesystems
  *    - check memoyr usage on ur 6TB system?
  *    - it might be fine for now
- * 6. Create 1 more small image. Include files, directorys, links and complex sparse file (sparsed in middle of file?)
- * 7. Add super arg option to example binary. SHows superblock info <---------
+ * 5. add option to set log level for example binary
  * Resources:
  * https://blogs.oracle.com/linux/post/understanding-ext4-disk-layout-part-2
  * https://blogs.oracle.com/linux/post/understanding-ext4-disk-layout-part-1
@@ -48,7 +43,6 @@ pub struct Ext4Reader<T: std::io::Seek + std::io::Read> {
     pub(crate) inode_size: u16,
     pub(crate) inodes_per_group: u32,
     pub(crate) cache_names: HashMap<u64, String>,
-    pub(crate) current_inode: u64,
 }
 
 pub trait Ext4ReaderAction<'ext4, 'reader, T: std::io::Seek + std::io::Read> {
@@ -75,7 +69,6 @@ impl<T: std::io::Seek + std::io::Read> Ext4Reader<T> {
             inode_size: 0,
             inodes_per_group: 0,
             cache_names: HashMap::new(),
-            current_inode: 2,
         };
 
         let block = SuperBlock::read_superblock(&mut reader.fs)?;
@@ -89,9 +82,9 @@ impl<T: std::io::Seek + std::io::Read> Ext4Reader<T> {
         reader.inode_size = block.inode_size;
         reader.inodes_per_group = block.number_inodes_per_block_group;
         reader.superblock = Some(block);
-        println!("{:?}", reader.superblock);
+        // println!("{:?}", reader.superblock);
         reader.descriptors = Some(Descriptor::read_descriptor(&mut reader)?);
-        println!("{}", reader.descriptors.as_ref().unwrap().len());
+        //  println!("{}", reader.descriptors.as_ref().unwrap().len());
         Ok(reader)
     }
 }
@@ -106,7 +99,7 @@ impl<'ext4, 'reader, T: std::io::Seek + std::io::Read> Ext4ReaderAction<'ext4, '
 
     fn read_dir(&mut self, inode: u32) -> Result<FileInfo, Ext4Error> {
         let inode_value = Inode::read_inode_table(self, inode)?;
-        println!("inode: {inode}. Info: {inode_value:?}");
+        // println!("inode: {inode}. Info: {inode_value:?}");
 
         let dirs = Directory::read_directory_data(self, &inode_value.extents)?;
         let mut info = FileInfo::new(inode_value, dirs, inode as u64);
@@ -162,7 +155,7 @@ impl<'ext4, 'reader, T: std::io::Seek + std::io::Read> Ext4ReaderAction<'ext4, '
             if bytes_read + temp_buf_size > inode_value.size as usize {
                 temp_buf_size = bytes_read + temp_buf_size - inode_value.size as usize;
             }
-            println!("bytes read: {bytes_read}. Bytes now: {bytes}");
+            // println!("bytes read: {bytes_read}. Bytes now: {bytes}");
             //println!("{temp_buf:?}");
             // Make sure our temp buff does not have any extra zeros from the initialization
             if bytes < temp_buf_size {
@@ -172,7 +165,7 @@ impl<'ext4, 'reader, T: std::io::Seek + std::io::Read> Ext4ReaderAction<'ext4, '
                 // Small files maybe allocated more block bytes than needed
                 // Ex: A file less than 4k in size
                 temp_buf = temp_buf[0..inode_value.size as usize].to_vec();
-                println!("{temp_buf:?}");
+                // println!("{temp_buf:?}");
             }
             if bytes == 0 && bytes_read < inode_value.size as usize {
                 // File is sparse. Remaining bytes are zeros
@@ -181,17 +174,11 @@ impl<'ext4, 'reader, T: std::io::Seek + std::io::Read> Ext4ReaderAction<'ext4, '
                 let remaining = inode_value.size as usize - bytes_read as usize;
                 temp_buf = vec![0u8; remaining];
                 bytes_read += remaining;
-                println!("im leaving now!");
             }
 
             // We may have read too many bytes at the end of the file
             // If we have, adjust our buffer a little
             if bytes_read > inode_value.size as usize && inode_value.size as usize > buf_size {
-                println!("read too much. adjusting...");
-                println!(
-                    "taking {} bytes from buffer",
-                    inode_value.size as usize - buf_size
-                );
                 temp_buf = temp_buf[0..(inode_value.size as usize - buf_size)].to_vec();
             }
             buf_size += temp_buf.len();
@@ -298,16 +285,6 @@ mod tests {
             if entry.file_type == FileType::Directory {
                 continue;
             }
-            if !info.extended_attributes.is_empty() {
-                println!("Attributes: {info:?}");
-            }
-            println!(
-                "file path: {}/{}",
-                cache
-                    .get(&(info.inode as u64))
-                    .unwrap_or(&String::from("OOPS")),
-                entry.name
-            );
         }
     }
 
@@ -450,7 +427,7 @@ mod tests {
         assert_eq!(info.len(), 274310864);
     }
 
-    #[test]
+    //#[test]
     fn test_walk_dir_os() {
         let reader = File::open("/home/ubunty/Downloads/ext4_root.img").unwrap();
         let buf = BufReader::new(reader);

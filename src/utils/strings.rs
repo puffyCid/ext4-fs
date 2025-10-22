@@ -1,5 +1,5 @@
 use crate::utils::encoding::base64_encode_standard;
-use log::warn;
+use log::{info, warn};
 use std::string::FromUtf8Error;
 use uuid::Uuid;
 
@@ -9,7 +9,7 @@ pub(crate) fn extract_utf8_string(data: &[u8]) -> String {
     match utf8_result {
         Ok(result) => result,
         Err(err) => {
-            warn!("[ext4fs] Failed to get UTF8 string: {err:?}");
+            info!("[ext4fs] Failed to get UTF8 string: {err:?}");
             let max_size = 2097152;
             let issue = if data.len() < max_size {
                 base64_encode_standard(data)
@@ -20,27 +20,6 @@ pub(crate) fn extract_utf8_string(data: &[u8]) -> String {
                 )
             };
             format!("[ext4fs] Failed to get UTF8 string: {issue}")
-        }
-    }
-}
-
-/// Convert little endian bytes to a UUID/GUID string
-pub(crate) fn format_guid_le_bytes(data: &[u8]) -> String {
-    let guid_size = 16;
-    if data.len() != guid_size {
-        warn!(
-            "[ext4fs] Provided little endian data does not meet GUID size of 16 bytes, got: {}",
-            data.len()
-        );
-        return format!("Not a GUID/UUID: {data:?}");
-    }
-
-    let guid_data = data.try_into();
-    match guid_data {
-        Ok(result) => Uuid::from_bytes_le(result).hyphenated().to_string(),
-        Err(_err) => {
-            warn!("[ext4fs] Could not convert little endian bytes to a GUID/UUID format: {data:?}");
-            format!("Could not convert data: {data:?}")
         }
     }
 }

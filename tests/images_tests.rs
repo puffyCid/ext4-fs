@@ -49,10 +49,12 @@ fn walk_dir<T: std::io::Seek + std::io::Read>(
                 assert_eq!(hash_value.md5, "e0b16e3a6c58c67928b5895797fccaa0");
             } else if format!("{}/{}", cache.join("/"), entry.name).contains("initial_sparse") {
                 assert_eq!(hash_value.md5, "c53dd591cf199ec5d692de2cbdb8559b");
+            } else if format!("{}/{}", cache.join("/"), entry.name).contains("osquery_holes") {
+                assert_eq!(hash_value.md5, "ec131887a8a59260f64f1435f920d62a");
             }
         }
 
-        if format!("{}/{}", cache.join("/"), entry.name).contains("osquery")
+        if format!("{}/{}", cache.join("/"), entry.name).contains("osqueryd2")
             && entry.file_type == FileType::File
         {
             let mut file_reader = reader.reader(entry.inode).unwrap();

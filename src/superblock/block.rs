@@ -316,7 +316,6 @@ impl SuperBlock {
 
     /// Pare the block data associated with the superblock
     fn parse_block(data: &[u8]) -> nom::IResult<&[u8], SuperBlock> {
-        println!("superblock: {data:?}");
         let (input, number_inodes) = le_u32(data)?;
         let (input, number_blocks) = le_u32(input)?;
         let (input, reserved_blocks) = le_u32(input)?;

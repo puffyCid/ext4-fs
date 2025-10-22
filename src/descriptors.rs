@@ -90,7 +90,7 @@ impl Descriptor {
         // Offset: 1024 - Superblock - 1024 bytes in size. We do not need to adjust because the 4096 block includes both boot sector and superblock
         // Offset: 4096 - Descriptors
         let offset = reader.blocksize as u64 * adjust_offset;
-        println!("offset {offset}");
+        // println!("offset {offset}");
         let mut bytes = 32;
         let desc_count = reader.number_blocks / reader.blocks_per_group;
 

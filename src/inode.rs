@@ -5,7 +5,7 @@ use crate::{
     structs::{InodePermissions, InodeType},
     utils::{bytes::read_bytes, encoding::base64_encode_standard, strings::extract_utf8_string},
 };
-use log::{error, warn};
+use log::{error, info, warn};
 use nom::{
     bytes::complete::take,
     number::complete::{le_i32, le_u8, le_u16, le_u32},
@@ -97,10 +97,8 @@ impl Inode {
         inode: u32,
     ) -> Result<Inode, Ext4Error> {
         let desc_group = (inode - 1) / reader.inodes_per_group;
-        println!("My desc group: {desc_group}");
         let index = (inode - 1) % reader.inodes_per_group;
 
-        println!("dessc len: {:?}", reader.descriptors.as_ref().unwrap());
         // Unwrap is safe because we must initialize descriptors when creating Ext4Reader
         if let Some(desc) = reader
             .descriptors
@@ -108,12 +106,11 @@ impl Inode {
             .unwrap_or(&Vec::new())
             .get(desc_group as usize)
         {
-            println!("desc: {desc:?}");
             // Offset is our inode table block + inode index value (inodes are typically 256 bytes)
             // Ex: (1060 * 4096) + 1 * 256
             let offset = (desc.inode_table_block as u64 * reader.blocksize as u64)
                 + (index * reader.inode_size as u32) as u64;
-            println!(
+            info!(
                 "[ext4-fs] Reading offset {offset}. Inode table block: {}. Index: {index}",
                 desc.inode_table_block
             );
@@ -155,7 +152,6 @@ impl Inode {
         let (input, blocks_count) = le_u32(input)?;
         let (input, flag_data) = le_u32(input)?;
         let flags = Inode::get_flags(flag_data);
-        println!("inode flags: {flags:?}. Data: {flag_data}");
 
         // If the ExtendedAttribute flag is set this is upper part of the extended attribute reference count
         // Otherwise its the lower part of the version
@@ -165,21 +161,13 @@ impl Inode {
         if !flags.contains(&InodeFlags::Extents) && !flags.contains(&InodeFlags::Inline) {
             // If target file path is less than 60 bytes
             // It will be stored here
-            // Otherwise we need to parse blocks and extents
-            // 1. grab 60 bytes
-            // 2. if first 4 bytes are 0x2? the symoblic link path is less 60 bytes?
-            // 3. extract_utf8_string()
-            // 4. Treat the name as " -> {name}"
-            // 5. if not 0x2 panic XD and handle like extents or block data?
-            // Done!
             let path_size: u8 = 60;
             let (input, link_data) = take(path_size)(remaining)?;
             remaining = input;
             if size < path_size as u32 {
                 symoblic_link = extract_utf8_string(link_data);
             } else {
-                println!("{input:?}");
-                panic!("block stuff. Points to files??");
+                warn!("[ext4-fs] Got large SymbolicLink path: {link_data:?}");
             }
         } else if flags.contains(&InodeFlags::Extents) {
             let extent_size: u8 = 60;
@@ -190,7 +178,7 @@ impl Inode {
         } else if flags.contains(&InodeFlags::Inline) {
             let file_entry_size: u8 = 60;
             let (input, file_data) = take(file_entry_size)(remaining)?;
-            panic!("inline data: {file_data:?}");
+            warn!("[ext4-tfs] Got Inline data. This is not supported yet. Data: {file_data:?}");
             remaining = input;
         }
 
@@ -215,7 +203,6 @@ impl Inode {
         let (input, created_precision) = le_u32(input)?;
         let (input, upper_version) = le_u32(input)?;
         let (input, i_projid) = le_u32(input)?;
-        println!("inode bytes: {data:?}");
 
         let mut inode = Inode {
             inode_type: Inode::get_file_type(modes),
@@ -256,7 +243,6 @@ impl Inode {
             extended_attributes: HashMap::new(),
             symoblic_link,
         };
-        println!("{inode:?}");
         if !inode.flags.contains(&InodeFlags::Inline) {
             inode.accessed = Inode::complete_time(accessed_or_checksum, accessed_precision);
             inode.changed = Inode::complete_time(changed_or_reference_count, changed_precision);
@@ -291,7 +277,6 @@ impl Inode {
 
     /// Determine the Inode Filetype
     fn get_file_type(data: u16) -> InodeType {
-        println!("{data}");
         if (data & 0x1000) == 0x1000 && data < 0x2000 {
             return InodeType::Pipe;
         } else if ((data & 0x2000) == 0x2000) && data < 0x4000 {
@@ -308,7 +293,6 @@ impl Inode {
             return InodeType::Socket;
         }
         warn!("[ext4-fs] Got unknown file {data}");
-        panic!("wrong!");
         InodeType::Unknown
     }
 
@@ -483,11 +467,9 @@ impl Inode {
             remaining = input;
         }
 
-        println!("remaining: {remaining:?}");
         let (input, name_size) = le_u8(remaining)?;
         let (input, name_index) = le_u8(input)?;
         let (input, value_data_offset) = le_u16(input)?;
-        println!("value data offset: {value_data_offset}");
         let (input, value_inode) = le_u32(input)?;
         let (input, value_size) = le_u32(input)?;
         let (input, attribute_entry_hash) = le_u32(input)?;
@@ -528,7 +510,7 @@ impl Inode {
             let bytes = match read_bytes(offset, reader.blocksize as u64, &mut reader.fs) {
                 Ok(result) => result,
                 Err(err) => {
-                    panic!(
+                    error!(
                         "[ext4-fs] Could not read extended inode {ea_inode} attribute at offset {offset}: {err:?}"
                     );
                     return Ok((input, attributes));
@@ -545,7 +527,7 @@ impl Inode {
             ) {
                 Ok((_, results)) => results,
                 Err(err) => {
-                    panic!(
+                    error!(
                         "[ext4-fs] Could not parse extended inode {ea_inode} attribute at offset {offset}: {err:?}"
                     );
                     return Ok((input, attributes));

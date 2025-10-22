@@ -22,6 +22,10 @@ struct Args {
     #[clap(short, long)]
     input: Option<String>,
 
+    /// Path to ext4 filesystem
+    #[clap(short, long)]
+    superblock: Option<String>,
+
     /// Output format. Options: csv
     #[clap(short, long, default_value = Format::Csv)]
     format: Format,
@@ -72,7 +76,7 @@ fn main() {
     let args = Args::parse();
     let output_format = args.format;
 
-    if args.input.is_none() {
+    if args.input.is_none() && args.superblock.is_none() {
         error!("Require a ext4 file to parse!");
         return;
     }
@@ -88,6 +92,12 @@ fn main() {
         let mut writer = OutputWriter::new(Box::new(handle), output_format.into()).unwrap();
 
         filesystem_reader(&path, args.md5, args.sha1, args.sha256, &mut writer);
+    } else if let Some(path) = args.superblock {
+        let reader = File::open(&path).unwrap();
+        let buf = BufReader::new(reader);
+        let mut ext_reader = Ext4Reader::new(buf, 4096).unwrap();
+        let superblock = ext_reader.superblock().unwrap();
+        println!("{superblock:?}");
     }
 }
 
@@ -178,7 +188,6 @@ fn walk_dir<T: std::io::Seek + std::io::Read>(
     paths: &mut Vec<TimelineFiles>,
     writer: &mut OutputWriter,
 ) {
-    println!("hi");
     for entry in &info.children {
         if entry.name == "." || entry.name == ".." {
             continue;
@@ -187,7 +196,6 @@ fn walk_dir<T: std::io::Seek + std::io::Read>(
             output(paths, writer).unwrap();
             paths.clear();
         }
-        println!("Current location: {}/{}", cache.join("/"), entry.name);
 
         let info = reader.stat(entry.inode).unwrap();
         assert_ne!(info.inode, 0);
@@ -238,11 +246,14 @@ fn walk_dir<T: std::io::Seek + std::io::Read>(
             continue;
         }
 
-        println!("file path: {}/{}", cache.join("/"), entry.name);
+        println!(
+            "Current file path: {}/{}",
+            cache.join("/").replace("//", "/"),
+            entry.name
+        );
 
         // Hash files
         if entry.file_type == FileType::File {
-            println!("trying to hash: {}", entry.inode);
             let hash_value = reader.hash(entry.inode, hash).unwrap();
 
             let directory = cache.join("/");
