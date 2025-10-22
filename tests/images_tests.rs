@@ -42,15 +42,19 @@ fn walk_dir<T: std::io::Seek + std::io::Read>(
                 sha1: false,
                 sha256: false,
             };
+            println!(
+                "file path: {}",
+                format!("{}/{}", cache.join("/"), entry.name)
+            );
             let hash_value = reader.hash(entry.inode, &hash_data).unwrap();
             assert!(!hash_value.md5.is_empty());
             // Check sparse files
             if format!("{}/{}", cache.join("/"), entry.name).contains("trailing_sparse") {
                 assert_eq!(hash_value.md5, "e0b16e3a6c58c67928b5895797fccaa0");
             } else if format!("{}/{}", cache.join("/"), entry.name).contains("initial_sparse") {
-                // assert_eq!(hash_value.md5, "c53dd591cf199ec5d692de2cbdb8559b");
+                assert_eq!(hash_value.md5, "c53dd591cf199ec5d692de2cbdb8559b");
             } else if format!("{}/{}", cache.join("/"), entry.name).contains("osquery_holes") {
-                //assert_eq!(hash_value.md5, "ec131887a8a59260f64f1435f920d62a");
+                assert_eq!(hash_value.md5, "ec131887a8a59260f64f1435f920d62a");
             }
         }
 

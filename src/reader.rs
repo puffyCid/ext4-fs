@@ -114,23 +114,43 @@ where
                 self.extents.extent_descriptor_list.first_key_value()
             {
                 let sparse_size = *first_block as u64 * self.blocksize;
+                println!(
+                    "sparse is: {sparse_size}. disk position: {}",
+                    self.disk_position
+                );
+
                 // Keep "reading" until we have reached the "end" of the sparse data
                 if self.disk_position <= sparse_size {
                     self.disk_position += size as u64;
+                    if self.disk_position == sparse_size {
+                        self.logical_block = *first_block;
+                        println!("logical block now2: {}", self.logical_block);
+
+                        self.disk_position = 0;
+                    }
                     return Ok(size);
                 }
                 // We ready to go to the next block
-                self.logical_block = extent.next_logical_block_number;
+                self.logical_block = *first_block;
                 self.disk_position = 0;
             }
         }
 
         while let Some(extent) = self.extents.extent_descriptor_list.get(&self.logical_block) {
             let max_position = extent.number_of_blocks as u64 * self.blocksize;
+
+            // We have reached the end if the logical block is larger than the next block (default is 0)
+            // If the reader continues to want to read data
+            // Return their own buffer
+            // Commonly occurs if their is sparse data and the end of a file
+            if extent.next_logical_block_number == 0 && self.disk_position >= max_position {
+                return Ok(size);
+            }
+
             if self.disk_position >= max_position {
                 println!(
-                    "disk position {} larger than max {max_position}",
-                    self.disk_position
+                    "disk position {} larger than max {max_position}. file size: {}. file position: {}",
+                    self.disk_position, self.file_size, self.file_position
                 );
                 // If we jumped to a really large offset using seek
                 // We need to preserve the offset we are at in the next extent block
@@ -181,13 +201,14 @@ where
             self.file_position += size as u64;
             if self.disk_position >= max_position {
                 println!(
-                    "disk position {} larger than max {max_position}. Next extent is: {}",
-                    self.disk_position, extent.next_logical_block_number
+                    "disk position {} larger than max {max_position}. File position: {}. Next extent is: {}",
+                    self.disk_position, self.file_position, extent.next_logical_block_number
                 );
+                // We have reached the end if the logical block is larger than the next block (default is 0)
+                // If we only have one extent we do not need to do any additional work
                 if self.extents.extent_descriptor_list.len() != 1 {
                     self.logical_block = extent.next_logical_block_number;
                     self.disk_position = 0;
-                    //panic!("impossible");
                 }
             }
             // If the user wants to read more bytes than allocated in a block then we must keep reading
@@ -204,6 +225,7 @@ where
             buf[..size].copy_from_slice(&bytes);
             return Ok(size);
         }
+
         if size >= total_bytes.len() {
             buf[..total_bytes.len()].copy_from_slice(&total_bytes);
             return Ok(total_bytes.len());
