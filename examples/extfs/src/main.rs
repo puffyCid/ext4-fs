@@ -206,11 +206,11 @@ fn walk_dir<T: std::io::Seek + std::io::Read>(
             && entry.inode != 2
         {
             let info = reader.read_dir(entry.inode).unwrap();
-            let directory = cache.join("/");
+            let directory = cache.join("/").replace("//", "/");
             cache.push(info.name.clone());
 
             let value = TimelineFiles {
-                fullpath: cache.join("/"),
+                fullpath: cache.join("/").replace("//", "/"),
                 directory,
                 filename: info.name.clone(),
                 file_type: FileType::Directory,
@@ -256,10 +256,10 @@ fn walk_dir<T: std::io::Seek + std::io::Read>(
         if entry.file_type == FileType::File {
             let hash_value = reader.hash(entry.inode, hash).unwrap();
 
-            let directory = cache.join("/");
+            let directory = cache.join("/").replace("//", "/");
 
             let value = TimelineFiles {
-                fullpath: format!("{}/{}", cache.join("/"), entry.name),
+                fullpath: format!("{}/{}", cache.join("/"), entry.name).replace("//", "/"),
                 directory,
                 filename: entry.name.clone(),
                 file_type: FileType::File,
@@ -295,9 +295,9 @@ fn walk_dir<T: std::io::Seek + std::io::Read>(
         }
 
         // Everything. Symbolic links, Blocks, FIFO, etc
-        let directory = cache.join("/");
+        let directory = cache.join("/").replace("//", "/");
         let value = TimelineFiles {
-            fullpath: format!("{}/{}", cache.join("/"), entry.name),
+            fullpath: format!("{}/{}", cache.join("/"), entry.name).replace("//", "/"),
             directory,
             filename: entry.name.clone(),
             file_type: entry.file_type,

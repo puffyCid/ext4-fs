@@ -19,11 +19,13 @@ use std::{
  * TODO:
  * 0. Add is_sparse value to FileInfo. complete "check_sparse" function
  * 1. Keep info/debug entries. Since it is experimental it will be helpful to have
- * 2. More integration tests
- * 4. Review your cache idea. I dont think it will work for large filesystems
+ * 2. Review your cache idea. I dont think it will work for large filesystems
  *    - check memoyr usage on ur 6TB system?
  *    - it might be fine for now
- * 5. add option to set log level for example binary
+ *    - reset the cache everytime read_dir() is called? self.cache_names = HashMap::new()?
+ * 3. add option to set log level for example binary
+ * 4. Make sure functions have tests
+ * 5. Setup github actions
  * Resources:
  * https://blogs.oracle.com/linux/post/understanding-ext4-disk-layout-part-2
  * https://blogs.oracle.com/linux/post/understanding-ext4-disk-layout-part-1
@@ -155,11 +157,13 @@ impl<'ext4, 'reader, T: std::io::Seek + std::io::Read> Ext4ReaderAction<'ext4, '
                     return Err(Ext4Error::FailedToRead);
                 }
             };
+
             bytes_read += bytes;
-            if bytes_read + temp_buf_size > inode_value.size as usize {
-                temp_buf_size = bytes_read + temp_buf_size - inode_value.size as usize;
+            if bytes_read > inode_value.size as usize {
+                temp_buf_size = bytes_read - inode_value.size as usize;
             }
-            // println!("bytes read: {bytes_read}. Bytes now: {bytes}");
+
+            //println!("bytes read: {bytes_read}");
             //println!("{temp_buf:?}");
             // Make sure our temp buff does not have any extra zeros from the initialization
             if bytes < temp_buf_size {
