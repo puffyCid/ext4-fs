@@ -17,10 +17,6 @@ use std::{
 
 /*
  * TODO:
- * 2. Review your cache idea. I dont think it will work for large filesystems
- *    - check memoyr usage on ur 6TB system?
- *    - it might be fine for now
- *    - reset the cache everytime read_dir() is called? self.cache_names = HashMap::new()?
  * 5. Setup github actions
  *    - review conditional if blocks in reader and extfs.rs
  *    - if they are not hit in coveraged. they are probably never going to be used then
@@ -34,7 +30,6 @@ pub struct Ext4Reader<T: std::io::Seek + std::io::Read> {
     pub fs: BufReader<T>,
     /// Default is probably 4096
     pub blocksize: u16,
-    superblock: Option<SuperBlock>,
     pub(crate) descriptors: Option<Vec<Descriptor>>,
     pub(crate) incompat_flags: Vec<IncompatFlags>,
     pub(crate) blocks_per_group: u32,
@@ -64,16 +59,16 @@ pub trait Ext4ReaderAction<'ext4, 'reader, T: std::io::Seek + std::io::Read> {
     fn reader(&'reader mut self, inode: u32) -> Result<FileReader<'reader, T>, Ext4Error>;
     /// Read the contents of a file into memory. **WARNING** this will read the entire file regardless of size into memory!
     fn read(&mut self, inode: u32) -> Result<Vec<u8>, Ext4Error>;
-    /// Return verbose inode information for the provide inode
+    /// Return verbose inode information for the provided inode
     fn inode_verbose(&mut self, inode: u32) -> Result<Inode, Ext4Error>;
 }
 
 impl<T: std::io::Seek + std::io::Read> Ext4Reader<T> {
+    /// Initialize an ext4 filesystem reader. This reader will automatically set the correct blocksize if you do not know it
     pub fn new(fs: BufReader<T>, blocksize: u16) -> Result<Ext4Reader<T>, Ext4Error> {
         let mut reader = Ext4Reader {
             fs,
             blocksize,
-            superblock: None,
             descriptors: None,
             incompat_flags: Vec::new(),
             blocks_per_group: 0,
@@ -94,7 +89,6 @@ impl<T: std::io::Seek + std::io::Read> Ext4Reader<T> {
         reader.number_blocks = block.number_blocks;
         reader.inode_size = block.inode_size;
         reader.inodes_per_group = block.number_inodes_per_block_group;
-        reader.superblock = Some(block);
         reader.descriptors = Some(Descriptor::read_descriptor(&mut reader)?);
         Ok(reader)
     }
