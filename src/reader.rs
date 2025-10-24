@@ -1,7 +1,5 @@
-use crate::{
-    extents::Extents, extfs::Ext4Reader, superblock::block::IncompatFlags, utils::bytes::read_bytes,
-};
-use log::error;
+use crate::{extfs::Ext4Reader, structs::Extents, utils::bytes::read_bytes};
+use log::{debug, error};
 use std::io::{self, BufReader, Error, Read, Seek};
 
 pub struct FileReader<'reader, T>
@@ -10,15 +8,12 @@ where
 {
     reader: &'reader mut BufReader<T>,
     blocksize: u64,
-    incompat_flags: Vec<IncompatFlags>,
     extents: Extents,
     disk_position: u64,
     file_position: u64,
     file_size: u64,
     logical_block: u32,
     total_sparse: u64,
-    /**Once true the reader will refuse to read any additional bytes */
-    complete: bool,
 }
 
 impl<'reader, T: io::Seek + io::Read> Ext4Reader<T> {
@@ -30,14 +25,12 @@ impl<'reader, T: io::Seek + io::Read> Ext4Reader<T> {
         FileReader {
             reader: &mut self.fs,
             blocksize: self.blocksize as u64,
-            incompat_flags: self.incompat_flags.clone(),
             extents: extents.clone(),
             disk_position: 0,
             file_position: 0,
             file_size,
             logical_block: 0,
             total_sparse: 0,
-            complete: false,
         }
     }
 }
@@ -56,39 +49,42 @@ where
         let mut limit = 0;
         let mut indexes = self.extents.index_descriptors.clone();
 
-        // Check for extent indexes
-        while self.extents.depth > 0 && limit != max_extents {
-            let mut next_depth = Vec::new();
-            for extent_index in indexes {
-                let offset = extent_index.block_number * self.blocksize;
-                let bytes = match read_bytes(offset, self.blocksize, self.reader) {
-                    Ok(result) => result,
-                    Err(err) => {
-                        error!(
-                            "[ext4-fs] Could not read extent index bytes at offset {offset}. Wanted {size} bytes. Error: {err:?}"
-                        );
-                        return Err(Error::new(io::ErrorKind::InvalidData, err));
+        // If we have no extent descriptors we need to parse extent indexes in order to get them
+        if self.extents.extent_descriptors.is_empty() {
+            // Check for extent indexes
+            while self.extents.depth > 0 && limit != max_extents {
+                let mut next_depth = Vec::new();
+                for extent_index in indexes {
+                    let offset = extent_index.block_number * self.blocksize;
+                    let bytes = match read_bytes(offset, self.blocksize, self.reader) {
+                        Ok(result) => result,
+                        Err(err) => {
+                            error!(
+                                "[ext4-fs] Could not read extent index bytes at offset {offset}. Wanted {size} bytes. Error: {err:?}"
+                            );
+                            return Err(Error::new(io::ErrorKind::InvalidData, err));
+                        }
+                    };
+                    let mut extents = match Extents::read_extents(&bytes) {
+                        Ok(result) => result,
+                        Err(err) => {
+                            error!(
+                                "[ext4-fs] Could not parse extent index data at offset {offset}. Wanted {size} bytes. Error: {err:?}"
+                            );
+                            return Err(Error::new(io::ErrorKind::InvalidData, err));
+                        }
+                    };
+                    if extents.depth != 0 {
+                        next_depth.append(&mut extents.index_descriptors);
                     }
-                };
-                let mut extents = match Extents::read_extents(&bytes) {
-                    Ok(result) => result,
-                    Err(err) => {
-                        error!(
-                            "[ext4-fs] Could not parse extent index data at offset {offset}. Wanted {size} bytes. Error: {err:?}"
-                        );
-                        return Err(Error::new(io::ErrorKind::InvalidData, err));
-                    }
-                };
-                if extents.depth != 0 {
-                    next_depth.append(&mut extents.index_descriptors);
+                    self.extents
+                        .extent_descriptors
+                        .append(&mut extents.extent_descriptors);
                 }
-                self.extents
-                    .extent_descriptors
-                    .append(&mut extents.extent_descriptors);
+                indexes = next_depth;
+                self.extents.depth -= 1;
+                limit += 1;
             }
-            indexes = next_depth;
-            self.extents.depth -= 1;
-            limit += 1;
         }
 
         // Update the BTreeMap
@@ -106,28 +102,28 @@ where
         let mut total_bytes: Vec<u8> = Vec::new();
         // If the caller just wants to stream the file
         // We can read small amounts at a time
-        let mut bytes;
+        let mut bytes = Vec::new();
 
         // If logical block is zero but the extent BTreeMap does not have 0. Then the beginning of the file is sparse
-        if self.logical_block == 0 && self.extents.extent_descriptor_list.get(&0).is_none() {
-            if let Some((first_block, _extent)) =
+        if self.logical_block == 0
+            && !self.extents.extent_descriptor_list.contains_key(&0)
+            && let Some((first_block, _extent)) =
                 self.extents.extent_descriptor_list.first_key_value()
-            {
-                let sparse_size = *first_block as u64 * self.blocksize;
-                // Keep "reading" until we have reached the "end" of the sparse data
-                if self.disk_position <= sparse_size {
-                    self.disk_position += size as u64;
-                    if self.disk_position == sparse_size {
-                        self.logical_block = *first_block;
+        {
+            let sparse_size = *first_block as u64 * self.blocksize;
+            // Keep "reading" until we have reached the "end" of the sparse data
+            if self.disk_position <= sparse_size {
+                self.disk_position += size as u64;
+                if self.disk_position == sparse_size {
+                    self.logical_block = *first_block;
 
-                        self.disk_position = 0;
-                    }
-                    return Ok(size);
+                    self.disk_position = 0;
                 }
-                // We ready to go to the next block
-                self.logical_block = *first_block;
-                self.disk_position = 0;
+                return Ok(size);
             }
+            // We ready to go to the next block
+            self.logical_block = *first_block;
+            self.disk_position = 0;
         }
 
         let tree_list = self.extents.extent_descriptor_list.len();
@@ -142,20 +138,15 @@ where
             // If the reader continues to want to read data
             // Return their own buffer
             // Commonly occurs if their is sparse data and the end of a file
-            if (extent.next_logical_block_number == 0 && self.disk_position >= max_position)
-                || self.complete
-            {
-                if self.complete {
-                    panic!("cmplete!");
-                }
+            if extent.next_logical_block_number == 0 && self.disk_position >= max_position {
                 return Ok(size);
             }
 
             if self.disk_position >= max_position && extent.block_diff == 0 {
-                // println!(
-                //     "disk position {} larger or equal than max {max_position}. file size: {}. file position: {}",
-                //    self.disk_position, self.file_size, self.file_position
-                //);
+                debug!(
+                    "[ext4-fs] disk position {} larger or equal than max {max_position}. file size: {}. file position: {}",
+                    self.disk_position, self.file_size, self.file_position
+                );
                 // If we jumped to a really large offset using seek
                 // We need to preserve the offset we are at in the next extent block
                 // Ex: For a 200MB file we seek to the end -10 bytes
@@ -165,10 +156,6 @@ where
                 self.disk_position -= extent.number_of_blocks as u64 * self.blocksize;
 
                 self.logical_block = extent.next_logical_block_number;
-                // The next block can never be zero
-                if self.logical_block == 0 {
-                    self.complete = true;
-                }
                 continue;
             }
 
@@ -176,10 +163,10 @@ where
             // Need to handle it
             let sparse_size = extent.block_diff as u64 * self.blocksize;
             if self.disk_position >= max_position {
-                //   println!(
-                //      "disk postiion now: {}. Diff: {}. sparse: {}. file position: {}",
-                //      self.disk_position, extent.block_diff, self.total_sparse, self.file_position
-                //  );
+                debug!(
+                    "[ext4-fs] disk postiion now: {}. Diff: {}. sparse: {}. file position: {}",
+                    self.disk_position, extent.block_diff, self.total_sparse, self.file_position
+                );
                 if extent.block_diff != 0 && self.total_sparse < sparse_size {
                     if sparse_size < size as u64 {
                         self.total_sparse += sparse_size;
@@ -196,10 +183,6 @@ where
 
                 self.disk_position = 0;
                 self.logical_block = extent.next_logical_block_number;
-                // The next block can never be zero
-                if self.logical_block == 0 {
-                    self.complete = true;
-                }
                 self.total_sparse = 0;
                 continue;
             }
@@ -207,7 +190,7 @@ where
             // Offset to the extent block. We need to account for our current reader position too
             let offset = (extent.block_number * self.blocksize) + self.disk_position;
 
-            // println!("     ### reading offset: {offset}");
+            debug!("     [ext4-fs] ### reading offset: {offset}");
             // If the user wants to read more bytes than allocated in a block then we need to reduce our bytes to read
             // We will keep reading until we have enough bytes to fill the user's buffer
             if size as u64 > (extent.number_of_blocks as u64 * self.blocksize) {
@@ -230,20 +213,16 @@ where
             // Make sure we track our position after reading bytes from disk
             self.disk_position += size as u64;
             self.file_position += size as u64;
-            //println!(
-            //    "    ->   reading disk postiion is now: {}. Diff: {}. sparse: {}. file position: {}",
-            //    self.disk_position, extent.block_diff, self.total_sparse, self.file_position
-            //);
+            debug!(
+                "    [ext4-fs] ->   reading disk postiion is now: {}. Diff: {}. sparse: {}. file position: {}",
+                self.disk_position, extent.block_diff, self.total_sparse, self.file_position
+            );
             if self.disk_position >= max_position && extent.block_diff == 0 {
                 // We have reached the end if the logical block is larger than the next block (default is 0)
                 // If we only have one extent we do not need to do any additional work
                 if tree_list != 1 {
                     self.logical_block = extent.next_logical_block_number;
                     self.disk_position = 0;
-                    // The next block can never be zero
-                    if self.logical_block == 0 {
-                        self.complete = true;
-                    }
                 }
             }
 
@@ -266,9 +245,20 @@ where
             buf[..total_bytes.len()].copy_from_slice(&total_bytes);
             return Ok(total_bytes.len());
         }
-        // Since blocks are typically 4096 bytes. We may have read too much data at the last block
-        buf[..size].copy_from_slice(&total_bytes[..size]);
-        Ok(size)
+
+        error!(
+            "[ext4-fs] Failed to process {} bytes read wanted {}",
+            bytes.len(),
+            buf.len()
+        );
+        Err(Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "Failed to process {} bytes read wanted {}",
+                bytes.len(),
+                buf.len()
+            ),
+        ))
     }
 }
 
@@ -283,7 +273,7 @@ where
         match position {
             std::io::SeekFrom::Start(start_position) => {
                 self.file_position = start_position;
-                self.disk_position = start_position
+                self.disk_position = start_position;
             }
             std::io::SeekFrom::End(end_position) => {
                 self.disk_position =
@@ -302,11 +292,7 @@ where
                     .disk_position
                     .try_into()
                     .map_or_else(
-                        |_| {
-                            ((self.disk_position as i64) + (relative_position))
-                                .try_into()
-                                .unwrap_or_default()
-                        },
+                        |_| (self.disk_position as i64) + (relative_position),
                         |pos: i64| pos + relative_position,
                     )
                     .try_into()

@@ -30,6 +30,10 @@ struct Args {
     #[clap(short, long, default_value = Format::Csv)]
     format: Format,
 
+    /// Logging level
+    #[clap(long, default_value = "false")]
+    debugging: bool,
+
     /// MD5 files
     #[clap(long, default_value = "false")]
     md5: bool,
@@ -65,16 +69,21 @@ impl From<Format> for &str {
 }
 
 fn main() {
+    let args = Args::parse();
+    let output_format = args.format;
+
+    let filter = if args.debugging {
+        LevelFilter::Debug
+    } else {
+        LevelFilter::Warn
+    };
     TermLogger::init(
-        LevelFilter::Warn,
+        filter,
         Config::default(),
         TerminalMode::Stderr,
         ColorChoice::Auto,
     )
     .expect("Failed to initialize simple logger");
-
-    let args = Args::parse();
-    let output_format = args.format;
 
     if args.input.is_none() && args.superblock.is_none() {
         error!("Require a ext4 file to parse!");
@@ -114,6 +123,9 @@ fn filesystem_reader(input: &str, md5: bool, sha1: bool, sha256: bool, writer: &
         file_type: FileType::Directory,
         inode: 2,
         size: 0,
+        uid: root.uid,
+        gid: root.gid,
+        is_sparse: root.is_sparse,
         permissions: root.permission.clone(),
         hard_links: root.hard_links,
         extended_attributes: root.extended_attributes.clone(),
@@ -166,6 +178,9 @@ struct TimelineFiles {
     file_type: FileType,
     inode: u64,
     size: u64,
+    uid: u16,
+    gid: u16,
+    is_sparse: bool,
     permissions: Vec<InodePermissions>,
     hard_links: u16,
     extended_attributes: HashMap<String, String>,
@@ -216,6 +231,9 @@ fn walk_dir<T: std::io::Seek + std::io::Read>(
                 file_type: FileType::Directory,
                 inode: info.inode,
                 size: 0,
+                uid: info.uid,
+                gid: info.gid,
+                is_sparse: info.is_sparse,
                 permissions: info.permission.clone(),
                 hard_links: info.hard_links,
                 extended_attributes: info.extended_attributes.clone(),
@@ -265,6 +283,9 @@ fn walk_dir<T: std::io::Seek + std::io::Read>(
                 file_type: FileType::File,
                 inode: info.inode,
                 size: info.size,
+                uid: info.uid,
+                gid: info.gid,
+                is_sparse: info.is_sparse,
                 permissions: info.permission,
                 hard_links: info.hard_links,
                 extended_attributes: info.extended_attributes,
@@ -303,6 +324,9 @@ fn walk_dir<T: std::io::Seek + std::io::Read>(
             file_type: entry.file_type,
             inode: info.inode,
             size: 0,
+            uid: info.uid,
+            gid: info.gid,
+            is_sparse: info.is_sparse,
             permissions: info.permission,
             hard_links: info.hard_links,
             extended_attributes: info.extended_attributes,
@@ -352,6 +376,9 @@ impl OutputWriter {
                     "File Type",
                     "Inode",
                     "Size",
+                    "UID",
+                    "GID",
+                    "Is Sparse",
                     "Permissions",
                     "Hard Links",
                     "Inode Type",
@@ -389,6 +416,9 @@ impl OutputWriter {
                     format!("{:?}", record.file_type),
                     record.inode.to_string(),
                     record.size.to_string(),
+                    record.uid.to_string(),
+                    record.gid.to_string(),
+                    record.is_sparse.to_string(),
                     format!("{:?}", record.permissions.clone()),
                     record.hard_links.to_string(),
                     format!("{:?}", record.inode_type),

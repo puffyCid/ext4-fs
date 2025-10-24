@@ -1,6 +1,5 @@
-use log::{error, warn};
-
 use crate::error::Ext4Error;
+use log::{error, warn};
 use std::io::{BufReader, Read, Seek, SeekFrom};
 
 pub(crate) fn read_bytes<T: std::io::Read + std::io::Seek>(
@@ -26,4 +25,20 @@ pub(crate) fn read_bytes<T: std::io::Read + std::io::Seek>(
     }
 
     Ok(buff_size)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{extfs::Ext4Reader, utils::bytes::read_bytes};
+    use std::{fs::File, io::BufReader, path::PathBuf};
+
+    #[test]
+    fn test_read_bytes() {
+        let mut test_location = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        test_location.push("tests/images/test.img");
+        let reader = File::open(test_location.to_str().unwrap()).unwrap();
+        let buf = BufReader::new(reader);
+        let mut ext4_reader = Ext4Reader::new(buf, 4096).unwrap();
+        assert_eq!(read_bytes(12, 90, &mut ext4_reader.fs).unwrap().len(), 90);
+    }
 }

@@ -1,70 +1,20 @@
 use crate::{
-    error::Ext4Error, extfs::Ext4Reader, superblock::block::IncompatFlags, utils::bytes::read_bytes,
+    error::Ext4Error,
+    extfs::Ext4Reader,
+    structs::{BlockFlags, Descriptor},
+    superblock::block::IncompatFlags,
+    utils::bytes::read_bytes,
 };
 use log::error;
 use nom::number::complete::{le_u16, le_u32};
 
-#[derive(Debug, Clone)]
 /**
  * Get Group Descriptor Table info. To capture the entire table you need to:
- * descriptor_count = SuperBlock.number_blocks/SuperBlock.number_blocks_per_block_group
- * Each Group Descriptor Table size is equal to SuperBlock.block_size
+ * `descriptor_count` = `SuperBlock.number_blocks`/`SuperBlock.number_blocks_per_block_group`
+ * Each Group Descriptor Table size is equal to `SuperBlock.block_size`
  *
- * Group Descriptor Table size = descriptor_count * SuperBlock.block_size
+ * Group Descriptor Table size = `descriptor_count` * `SuperBlock.block_size`
  */
-pub(crate) struct Descriptor {
-    /**If IncompatFlags.Bit64 enabled then contains lower 32 bit value */
-    bitmap_block: u32,
-    /**If IncompatFlags.Bit64 enabled then contains lower 32 bit value */
-    pub(crate) bitmap_inode: u32,
-    /**If IncompatFlags.Bit64 enabled then contains lower 32 bit value */
-    pub(crate) inode_table_block: u64,
-    /**Count of unallocated blocks. If IncompatFlags.Bit64 enabled then contains lower 16 bit value  */
-    unallocated_blocks: u16,
-    /**Count of unallocated inodes. If IncompatFlags.Bit64 enabled then contains lower 16 bit value */
-    unallocated_inodes: u16,
-    /**Count of directories. If IncompatFlags.Bit64 enabled then contains lower 16 bit value */
-    pub(crate) directories: u16,
-    block_group_flags: Vec<BlockFlags>,
-    /**If IncompatFlags.Bit64 enabled then contains lower 32 bit value */
-    exclude_bitmap_block: u32,
-    /**If IncompatFlags.Bit64 enabled then contains lower 16 bit value */
-    block_bitmap_checksum: u16,
-    /**If IncompatFlags.Bit64 enabled then contains lower 16 bit value */
-    inode_bitmap_checksum: u16,
-    /**If IncompatFlags.Bit64 enabled then contains lower 16 bit value */
-    unused_inodes: u16,
-    checksum: u16,
-    /**If IncompatFlags.Bit64 enabled and descriptors > 32 bytes */
-    upper_bitmap_block: u32,
-    /**If IncompatFlags.Bit64 enabled and descriptors > 32 bytes */
-    upper_bitmap_inode: u32,
-    /**If IncompatFlags.Bit64 enabled and descriptors > 32 bytes */
-    upper_inode_table_block: u32,
-    /**If IncompatFlags.Bit64 enabled and descriptors > 32 bytes */
-    upper_unallocated_blocks: u16,
-    /**If IncompatFlags.Bit64 enabled and descriptors > 32 bytes */
-    upper_unallocated_inodes: u16,
-    /**If IncompatFlags.Bit64 enabled and descriptors > 32 bytes */
-    upper_directories: u16,
-    /**If IncompatFlags.Bit64 enabled and descriptors > 32 bytes */
-    upper_unused_inodes: u16,
-    /**If IncompatFlags.Bit64 enabled and descriptors > 32 bytes */
-    upper_exclude_bitmap_block: u32,
-    /**If IncompatFlags.Bit64 enabled and descriptors > 32 bytes */
-    upper_block_bitmap_checksum: u16,
-    /**If IncompatFlags.Bit64 enabled and descriptors > 32 bytes */
-    upper_inode_bitmap_checksum: u16,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) enum BlockFlags {
-    InodeBitmapUnused,
-    BlockBitmapUnused,
-    /**Bitmap is zeroed */
-    InodeTableEmpty,
-}
-
 impl Descriptor {
     /// Read and parse the descriptor data from the EXT4 filesystem
     pub(crate) fn read_descriptor<T: std::io::Seek + std::io::Read>(
@@ -90,7 +40,6 @@ impl Descriptor {
         // Offset: 1024 - Superblock - 1024 bytes in size. We do not need to adjust because the 4096 block includes both boot sector and superblock
         // Offset: 4096 - Descriptors
         let offset = reader.blocksize as u64 * adjust_offset;
-        // println!("offset {offset}");
         let mut bytes = 32;
         let desc_count = reader.number_blocks / reader.blocks_per_group;
 
@@ -101,11 +50,7 @@ impl Descriptor {
         }
         let mut descs = Vec::new();
         while count < desc_count || count == 0 {
-            let bytes = read_bytes(
-                offset + (count as u64 * bytes as u64),
-                bytes,
-                &mut reader.fs,
-            )?;
+            let bytes = read_bytes(offset + (count as u64 * bytes), bytes, &mut reader.fs)?;
             let desc = match Descriptor::parse_descriptor(&bytes, is_bit64) {
                 Ok((_, result)) => result,
                 Err(err) => {
@@ -140,7 +85,7 @@ impl Descriptor {
         let mut info = Descriptor {
             bitmap_block,
             bitmap_inode,
-            inode_table_block: (0 << 32) | inode_table_block as u64,
+            inode_table_block: inode_table_block as u64,
             unallocated_blocks,
             unallocated_inodes,
             directories,
@@ -183,7 +128,7 @@ impl Descriptor {
         info.upper_bitmap_block = upper_bitmap_block;
         info.upper_bitmap_inode = upper_bitmap_inode;
         info.upper_inode_table_block = upper_inode_table_block;
-        info.inode_table_block = ((upper_inode_table_block as u64) << 32) | info.inode_table_block;
+        info.inode_table_block |= (upper_inode_table_block as u64) << 32;
         info.upper_unallocated_blocks = upper_unallocated_blocks;
         info.upper_unallocated_inodes = upper_unallocated_inodes;
         info.upper_directories = upper_directories;

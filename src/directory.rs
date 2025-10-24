@@ -1,8 +1,7 @@
 use crate::{
     error::Ext4Error,
-    extents::Extents,
     extfs::Ext4Reader,
-    structs::{Directory, FileType},
+    structs::{Directory, Extents, FileType},
     utils::{bytes::read_bytes, strings::extract_utf8_string},
 };
 use log::error;
@@ -19,7 +18,6 @@ impl Directory {
         extent: &Extents,
     ) -> Result<Vec<HashMap<u64, Directory>>, Ext4Error> {
         let mut dirs = Vec::new();
-        // println!("Looping extents: {extents:?}");
         if extent.depth == 0 {
             for entry in &extent.extent_descriptors {
                 let offset =
@@ -35,7 +33,6 @@ impl Directory {
                     }
                 };
                 dirs.push(dir);
-                continue;
             }
         }
         for entry in &extent.index_descriptors {

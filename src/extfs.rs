@@ -1,9 +1,9 @@
 use crate::{
-    descriptors::Descriptor,
     error::Ext4Error,
-    inode::Inode,
     reader::FileReader,
-    structs::{Directory, Ext4Hash, FileInfo, HashValue, InodeType, Stat},
+    structs::{
+        Descriptor, Directory, Ext4Hash, Extents, FileInfo, HashValue, Inode, InodeType, Stat,
+    },
     superblock::block::{IncompatFlags, SuperBlock},
 };
 use log::error;
@@ -17,15 +17,13 @@ use std::{
 
 /*
  * TODO:
- * 0. Add is_sparse value to FileInfo. complete "check_sparse" function
- * 1. Keep info/debug entries. Since it is experimental it will be helpful to have
  * 2. Review your cache idea. I dont think it will work for large filesystems
  *    - check memoyr usage on ur 6TB system?
  *    - it might be fine for now
  *    - reset the cache everytime read_dir() is called? self.cache_names = HashMap::new()?
- * 3. add option to set log level for example binary
- * 4. Make sure functions have tests
  * 5. Setup github actions
+ *    - review conditional if blocks in reader and extfs.rs
+ *    - if they are not hit in coveraged. they are probably never going to be used then
  * Resources:
  * https://blogs.oracle.com/linux/post/understanding-ext4-disk-layout-part-2
  * https://blogs.oracle.com/linux/post/understanding-ext4-disk-layout-part-1
@@ -48,13 +46,26 @@ pub struct Ext4Reader<T: std::io::Seek + std::io::Read> {
 }
 
 pub trait Ext4ReaderAction<'ext4, 'reader, T: std::io::Seek + std::io::Read> {
+    /// Return file info about the root directory. Can be used to start a file listing
     fn root(&mut self) -> Result<FileInfo, Ext4Error>;
+    /// Read a directory based on provided inode value
     fn read_dir(&mut self, inode: u32) -> Result<FileInfo, Ext4Error>;
+    /// Return the `SuperBlock` information for the ext4 filesystem
     fn superblock(&mut self) -> Result<SuperBlock, Ext4Error>;
+    /// Return descriptors for the ext4 filesystem
+    fn descriptors(&mut self) -> Result<Vec<Descriptor>, Ext4Error>;
+    /// Return extents for a provide inode
+    fn extents(&mut self, inode: u32) -> Result<Option<Extents>, Ext4Error>;
+    /// Stat a file
     fn stat(&mut self, inode: u32) -> Result<Stat, Ext4Error>;
+    /// Hash a file. MD5, SHA1, SHA256 are supported
     fn hash(&mut self, inode: u32, hash: &Ext4Hash) -> Result<HashValue, Ext4Error>;
+    /// Create a reader to stream a file from the ext4 filesystem.
     fn reader(&'reader mut self, inode: u32) -> Result<FileReader<'reader, T>, Ext4Error>;
+    /// Read the contents of a file into memory. **WARNING** this will read the entire file regardless of size into memory!
     fn read(&mut self, inode: u32) -> Result<Vec<u8>, Ext4Error>;
+    /// Return verbose inode information for the provide inode
+    fn inode_verbose(&mut self, inode: u32) -> Result<Inode, Ext4Error>;
 }
 
 impl<T: std::io::Seek + std::io::Read> Ext4Reader<T> {
@@ -76,7 +87,7 @@ impl<T: std::io::Seek + std::io::Read> Ext4Reader<T> {
         let block = SuperBlock::read_superblock(&mut reader.fs)?;
         let size = 1024;
         let base: u16 = 2;
-        reader.blocksize = size * base.pow(block.block_size) as u16;
+        reader.blocksize = size * base.pow(block.block_size);
         reader.incompat_flags = block.incompatible_features_flags.clone();
         reader.blocks_per_group = block.number_blocks_per_block_group;
         reader.fs_size = block.number_blocks as u64 * blocksize as u64;
@@ -84,9 +95,7 @@ impl<T: std::io::Seek + std::io::Read> Ext4Reader<T> {
         reader.inode_size = block.inode_size;
         reader.inodes_per_group = block.number_inodes_per_block_group;
         reader.superblock = Some(block);
-        // println!("{:?}", reader.superblock);
         reader.descriptors = Some(Descriptor::read_descriptor(&mut reader)?);
-        //  println!("{}", reader.descriptors.as_ref().unwrap().len());
         Ok(reader)
     }
 }
@@ -101,7 +110,6 @@ impl<'ext4, 'reader, T: std::io::Seek + std::io::Read> Ext4ReaderAction<'ext4, '
 
     fn read_dir(&mut self, inode: u32) -> Result<FileInfo, Ext4Error> {
         let inode_value = Inode::read_inode_table(self, inode)?;
-        // println!("inode: {inode}. Info: {inode_value:?}");
 
         if let Some(extent) = &inode_value.extents {
             let dirs = Directory::read_directory_data(self, extent)?;
@@ -113,7 +121,7 @@ impl<'ext4, 'reader, T: std::io::Seek + std::io::Read> Ext4ReaderAction<'ext4, '
             return Ok(info);
         }
         error!("[ext4-fs] No extent data found. Cannot read directory");
-        return Err(Ext4Error::Directory);
+        Err(Ext4Error::Directory)
     }
 
     fn superblock(&mut self) -> Result<SuperBlock, Ext4Error> {
@@ -126,7 +134,7 @@ impl<'ext4, 'reader, T: std::io::Seek + std::io::Read> Ext4ReaderAction<'ext4, '
     }
 
     fn hash(&mut self, inode: u32, hashes: &Ext4Hash) -> Result<HashValue, Ext4Error> {
-        if hashes.md5 == false && hashes.sha1 == false && hashes.sha256 == false {
+        if !hashes.md5 && !hashes.sha1 && !hashes.sha256 {
             return Ok(HashValue {
                 md5: String::new(),
                 sha1: String::new(),
@@ -163,8 +171,6 @@ impl<'ext4, 'reader, T: std::io::Seek + std::io::Read> Ext4ReaderAction<'ext4, '
                 temp_buf_size = bytes_read - inode_value.size as usize;
             }
 
-            //println!("bytes read: {bytes_read}");
-            //println!("{temp_buf:?}");
             // Make sure our temp buff does not have any extra zeros from the initialization
             if bytes < temp_buf_size {
                 temp_buf = temp_buf[0..bytes].to_vec();
@@ -173,15 +179,6 @@ impl<'ext4, 'reader, T: std::io::Seek + std::io::Read> Ext4ReaderAction<'ext4, '
                 // Small files maybe allocated more block bytes than needed
                 // Ex: A file less than 4k in size
                 temp_buf = temp_buf[0..inode_value.size as usize].to_vec();
-                // println!("{temp_buf:?}");
-            }
-            if bytes == 0 && bytes_read < inode_value.size as usize {
-                // File is sparse. Remaining bytes are zeros
-                // There are no more extents we can read
-                // We will fill in the remaining zeros
-                let remaining = inode_value.size as usize - bytes_read as usize;
-                temp_buf = vec![0u8; remaining];
-                bytes_read += remaining;
             }
 
             // We may have read too many bytes at the end of the file
@@ -253,7 +250,20 @@ impl<'ext4, 'reader, T: std::io::Seek + std::io::Read> Ext4ReaderAction<'ext4, '
             return Ok(Ext4Reader::file_reader(self, &extent, inode_value.size));
         }
         error!("[ext4-fs] No extent data found. Cannot read directory");
-        return Err(Ext4Error::Directory);
+        Err(Ext4Error::Directory)
+    }
+
+    fn descriptors(&mut self) -> Result<Vec<Descriptor>, Ext4Error> {
+        Descriptor::read_descriptor(self)
+    }
+
+    fn extents(&mut self, inode: u32) -> Result<Option<Extents>, Ext4Error> {
+        let inode_value = Inode::read_inode_table(self, inode)?;
+        Ok(inode_value.extents)
+    }
+
+    fn inode_verbose(&mut self, inode: u32) -> Result<Inode, Ext4Error> {
+        Inode::read_inode_table(self, inode)
     }
 }
 
@@ -433,6 +443,28 @@ mod tests {
         let mut ext4_reader = Ext4Reader::new(buf, 4096).unwrap();
         let info = ext4_reader.read(676).unwrap();
         assert_eq!(info.len(), 274310864);
+    }
+
+    #[test]
+    fn test_descriptors() {
+        let mut test_location = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        test_location.push("tests/images/test.img");
+        let reader = File::open(test_location.to_str().unwrap()).unwrap();
+        let buf = BufReader::new(reader);
+        let mut ext4_reader = Ext4Reader::new(buf, 4096).unwrap();
+        let info = ext4_reader.descriptors().unwrap();
+        assert_eq!(info.len(), 7);
+    }
+
+    #[test]
+    fn test_extents() {
+        let mut test_location = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        test_location.push("tests/images/test.img");
+        let reader = File::open(test_location.to_str().unwrap()).unwrap();
+        let buf = BufReader::new(reader);
+        let mut ext4_reader = Ext4Reader::new(buf, 4096).unwrap();
+        let info = ext4_reader.extents(676).unwrap().unwrap();
+        assert_eq!(info.extent_descriptors.len(), 3);
     }
 
     //#[test]

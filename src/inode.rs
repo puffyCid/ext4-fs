@@ -1,94 +1,15 @@
 use crate::{
     error::Ext4Error,
-    extents::Extents,
     extfs::Ext4Reader,
-    structs::{InodePermissions, InodeType},
+    structs::{Extents, Inode, InodeFlags, InodePermissions, InodeType},
     utils::{bytes::read_bytes, encoding::base64_encode_standard, strings::extract_utf8_string},
 };
-use log::{error, info, warn};
+use log::{debug, error, warn};
 use nom::{
     bytes::complete::take,
     number::complete::{le_i32, le_u8, le_u16, le_u32},
 };
 use std::collections::HashMap;
-
-#[derive(Debug)]
-pub struct Inode {
-    pub(crate) inode_type: InodeType,
-    pub(crate) permissions: Vec<InodePermissions>,
-    pub(crate) uid: u16,
-    pub(crate) size: u64,
-    pub(crate) accessed: i64,
-    pub(crate) changed: i64,
-    pub(crate) modified: i64,
-    pub(crate) deleted: i32,
-    pub(crate) gid: u16,
-    pub(crate) hard_links: u16,
-    blocks_count: u32,
-    pub(crate) flags: Vec<InodeFlags>,
-    direct_blocks: Vec<u32>,
-    indirect_block: u32,
-    double_indirect: u32,
-    triple_indirect: u32,
-    pub(crate) extents: Option<Extents>,
-    file_entry: Vec<u8>,
-    nfs: u32,
-    acl_block: u32,
-    upper_size: u32,
-    fragment_offset: u32,
-    upper_block_count: u16,
-    upper_acl_block: u16,
-    upper_uid: u16,
-    upper_gid: u16,
-    checksum: u16,
-    extended_inode_size: u16,
-    upper_checksum: u16,
-    changed_precision: u32,
-    modified_precision: u32,
-    accessed_precision: u32,
-    pub(crate) created: i64,
-    created_precision: u32,
-    pub(crate) extended_attributes: HashMap<String, String>,
-    pub(crate) symoblic_link: String,
-    pub(crate) is_sparse: bool,
-}
-
-#[derive(Debug, PartialEq)]
-pub(crate) enum InodeFlags {
-    SecureDelete,
-    Undelete,
-    Compressed,
-    SynchronousUpdates,
-    Immutable,
-    AppendOnly,
-    NoDump,
-    NoAtime,
-    Dirty,
-    CompressedClusters,
-    NoCompression,
-    /**Only used on Ext2 and Ext3 */
-    _CompressionError,
-    Encrypted,
-    Index,
-    Imagic,
-    Journal,
-    NoTail,
-    TopDirectory,
-    DirectorySync,
-    HugeFile,
-    Extents,
-    Verity,
-    ExtendedAttribute,
-    BlocksEof,
-    Snapshot,
-    Dax,
-    SnapshotDeleted,
-    SnapshotShrink,
-    Inline,
-    ProjectInherit,
-    Casefold,
-    Reserved,
-}
 
 impl Inode {
     /// Read and parse the inode table. This will contain most metadata about files on EXT4 filesystem
@@ -108,9 +29,9 @@ impl Inode {
         {
             // Offset is our inode table block + inode index value (inodes are typically 256 bytes)
             // Ex: (1060 * 4096) + 1 * 256
-            let offset = (desc.inode_table_block as u64 * reader.blocksize as u64)
+            let offset = (desc.inode_table_block * reader.blocksize as u64)
                 + (index * reader.inode_size as u32) as u64;
-            info!(
+            debug!(
                 "[ext4-fs] Reading offset {offset}. Inode table block: {}. Index: {index}",
                 desc.inode_table_block
             );
@@ -142,7 +63,7 @@ impl Inode {
 
         // If there is NO ExtendedAttribute flag, these are timestamps
         // If the Inode ExtendedAttribute flag is set, these are lower parts of the extended attribute
-        let (input, mut accessed_or_checksum) = le_i32(input)?;
+        let (input, accessed_or_checksum) = le_i32(input)?;
         let (input, changed_or_reference_count) = le_i32(input)?;
         let (input, modified_or_inode_extended_attribute) = le_i32(input)?;
         let (input, deleted) = le_i32(input)?;
@@ -155,7 +76,7 @@ impl Inode {
 
         // If the ExtendedAttribute flag is set this is upper part of the extended attribute reference count
         // Otherwise its the lower part of the version
-        let (mut remaining, lower_version_or_upper_extended_attributes) = le_u32(input)?;
+        let (mut remaining, _lower_version_or_upper_extended_attributes) = le_u32(input)?;
         let mut symoblic_link = String::new();
         let mut extents = Vec::new();
         if !flags.contains(&InodeFlags::Extents) && !flags.contains(&InodeFlags::Inline) {
@@ -201,8 +122,8 @@ impl Inode {
         let (input, accessed_precision) = le_u32(input)?;
         let (input, created) = le_i32(input)?;
         let (input, created_precision) = le_u32(input)?;
-        let (input, upper_version) = le_u32(input)?;
-        let (input, i_projid) = le_u32(input)?;
+        let (input, _upper_version) = le_u32(input)?;
+        let (input, _i_projid) = le_u32(input)?;
 
         let mut inode = Inode {
             inode_type: Inode::get_file_type(modes),
@@ -221,8 +142,8 @@ impl Inode {
             indirect_block: 0,
             double_indirect: 0,
             triple_indirect: 0,
-            is_sparse: Inode::check_sparse(&extents),
-            extents: extents.get(0).cloned(),
+            is_sparse: Inode::check_sparse(extents.first(), reader),
+            extents: extents.first().cloned(),
             file_entry: Vec::new(),
             nfs,
             acl_block,
@@ -471,9 +392,9 @@ impl Inode {
         let (input, name_size) = le_u8(remaining)?;
         let (input, name_index) = le_u8(input)?;
         let (input, value_data_offset) = le_u16(input)?;
-        let (input, value_inode) = le_u32(input)?;
+        let (input, _value_inode) = le_u32(input)?;
         let (input, value_size) = le_u32(input)?;
-        let (input, attribute_entry_hash) = le_u32(input)?;
+        let (input, _attribute_entry_hash) = le_u32(input)?;
 
         let (_input, name_data) = take(name_size)(input)?;
         let name = extract_utf8_string(name_data);
@@ -540,7 +461,47 @@ impl Inode {
         Ok((input, attributes))
     }
 
-    fn check_sparse(extents: &[Extents]) -> bool {
+    fn check_sparse<T: std::io::Seek + std::io::Read>(
+        extents: Option<&Extents>,
+        reader: &mut Ext4Reader<T>,
+    ) -> bool {
+        if let Some(value) = extents {
+            let mut check_extents = value.extent_descriptors.clone();
+            if check_extents.is_empty() {
+                let mut indexes = value.index_descriptors.clone();
+
+                let mut limit = 0;
+                while limit < value.depth {
+                    let mut next_depth = Vec::new();
+                    for extent_index in indexes {
+                        let offset = extent_index.block_number * reader.blocksize as u64;
+                        let bytes =
+                            match read_bytes(offset, reader.blocksize as u64, &mut reader.fs) {
+                                Ok(result) => result,
+                                Err(_err) => return false,
+                            };
+                        let mut extents = match Extents::read_extents(&bytes) {
+                            Ok(result) => result,
+                            Err(_err) => return false,
+                        };
+                        if extents.depth != 0 {
+                            next_depth.append(&mut extents.index_descriptors);
+                        }
+                        check_extents.append(&mut extents.extent_descriptors);
+                    }
+                    indexes = next_depth;
+                    limit += 1;
+                }
+            }
+
+            // Check for evidence of possible sparse data
+            for value in check_extents {
+                // If the block are not sequential then there is sparse data
+                if value.block_diff != 0 {
+                    return true;
+                }
+            }
+        }
         false
     }
 }
@@ -550,8 +511,9 @@ mod tests {
     use crate::{
         extfs::Ext4Reader,
         inode::{Inode, InodeType},
+        structs::{ExtentDescriptor, Extents},
     };
-    use std::{fs::File, io::BufReader, path::PathBuf};
+    use std::{collections::BTreeMap, fs::File, io::BufReader, path::PathBuf};
 
     #[test]
     fn test_parse_inode() {
@@ -579,6 +541,7 @@ mod tests {
         assert_eq!(results.created, 1753319678856008000);
         assert_eq!(results.modified, 1753321358964008000);
         assert_eq!(results.changed, 1753321358964008000);
+        assert_eq!(results.is_sparse, false);
     }
 
     #[test]
@@ -592,6 +555,36 @@ mod tests {
             let flag = Inode::get_flags(entry);
             assert!(!flag.is_empty())
         }
+    }
+
+    #[test]
+    fn test_check_sparse() {
+        let mut test_location = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        test_location.push("tests/images/test.img");
+        let reader = File::open(test_location.to_str().unwrap()).unwrap();
+        let buf = BufReader::new(reader);
+        let mut ext4_reader = Ext4Reader::new(buf, 4096).unwrap();
+
+        let test = Extents {
+            signature: 1,
+            number_of_extents_or_indexes: 1,
+            max_extents_or_indexes: 1,
+            depth: 0,
+            generation: 0,
+            extent_descriptors: vec![ExtentDescriptor {
+                logical_block_number: 1024,
+                number_of_blocks: 99,
+                block_number: 99,
+                next_logical_block_number: 1234,
+                block_diff: 12,
+                upper_part_physical_block_number: 0,
+                lower_part_physical_block_number: 0,
+            }],
+            index_descriptors: Vec::new(),
+            extent_descriptor_list: BTreeMap::new(),
+        };
+
+        assert!(Inode::check_sparse(Some(&test), &mut ext4_reader))
     }
 
     #[test]
@@ -632,6 +625,7 @@ mod tests {
         );
         assert_eq!(results.accessed, 1753320914532008000);
         assert_eq!(results.created, 1753319659000000000);
+        assert_eq!(results.is_sparse, false);
     }
 
     #[test]
@@ -681,6 +675,7 @@ mod tests {
         assert_eq!(results.inode_type, InodeType::SymbolicLink);
         assert_eq!(results.hard_links, 1);
         assert_eq!(results.created, 1759713524225734637);
-        assert_eq!(results.symoblic_link, "/opt/osquery/bin/osqueryd")
+        assert_eq!(results.symoblic_link, "/opt/osquery/bin/osqueryd");
+        assert_eq!(results.is_sparse, false);
     }
 }

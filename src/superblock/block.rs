@@ -414,7 +414,7 @@ impl SuperBlock {
 
         let (input, flex_block_group_size) = le_u8(input)?;
         //Checksum type should always be Castagnoli
-        let (input, checksum_type_data) = le_u8(input)?;
+        let (input, _checksum_type_data) = le_u8(input)?;
         let (input, encryption_level) = le_u8(input)?;
         let (input, _padding) = le_u8(input)?;
 
@@ -871,6 +871,17 @@ mod tests {
         ];
         for entry in test {
             assert!(!SuperBlock::incompat_flabs(entry).is_empty());
+        }
+    }
+
+    #[test]
+    fn test_readonly_flags() {
+        let test = [
+            0x1, 0x2, 0x4, 0x8, 0x10, 0x20, 0x40, 0x80, 0x100, 0x200, 0x400, 0x800, 0x1000, 0x2000,
+            0x4000, 0x8000, 0x10000,
+        ];
+        for entry in test {
+            assert!(!SuperBlock::readonly_flags(entry).is_empty())
         }
     }
 }

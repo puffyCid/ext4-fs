@@ -1,38 +1,10 @@
-use crate::error::Ext4Error;
+use crate::{
+    error::Ext4Error,
+    structs::{ExtentDescriptor, Extents, IndexDescriptor},
+};
 use log::error;
 use nom::number::complete::{le_u16, le_u32};
 use std::collections::BTreeMap;
-
-#[derive(Debug, Clone)]
-pub(crate) struct Extents {
-    signature: u16,
-    number_of_extents_or_indexes: u16,
-    max_extents_or_indexes: u16,
-    pub(crate) depth: u16,
-    generation: u32,
-    pub(crate) extent_descriptors: Vec<ExtentDescriptor>,
-    pub(crate) index_descriptors: Vec<IndexDescriptor>,
-    pub(crate) extent_descriptor_list: BTreeMap<u32, ExtentDescriptor>,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct ExtentDescriptor {
-    pub(crate) logical_block_number: u32,
-    pub(crate) number_of_blocks: u16,
-    pub(crate) block_number: u64,
-    pub(crate) next_logical_block_number: u32,
-    pub(crate) block_diff: u32,
-    pub(crate) upper_part_physical_block_number: u16,
-    pub(crate) lower_part_physical_block_number: u32,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct IndexDescriptor {
-    pub(crate) logical_block_number: u32,
-    pub(crate) block_number: u64,
-    pub(crate) lower_part_physical_block_number: u32,
-    pub(crate) upper_part_physical_block_number: u16,
-}
 
 impl Extents {
     /// Read and pars the extents data
