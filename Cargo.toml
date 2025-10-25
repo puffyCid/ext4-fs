@@ -2,6 +2,10 @@
 name = "ext4-fs"
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
+repository = "https://github.com/puffyCid/ext4-fs"
+description = "A very basic library to read the ext4 filesystem"
+keywords = ["forensics"]
 
 [dependencies]
 nom = "8.0.0"
