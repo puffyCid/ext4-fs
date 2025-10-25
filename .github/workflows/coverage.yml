@@ -1,0 +1,64 @@
+name: Code Coverage
+
+on:
+  pull_request:
+    branches:
+      - "main"
+  push:
+    branches:
+      - main
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions: {}
+
+jobs:
+  coverage:
+    name: Check Code Coverage
+    strategy:
+      fail-fast: false
+      matrix:
+        info:
+          - {
+              os: "ubuntu-latest",
+              target: "x86_64-unknown-linux-gnu",
+              cross: false,
+            }
+    runs-on: ${{ matrix.info.os }}
+    permissions: 
+      contents: read
+      pull-requests: write # publish code coverage reports
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 #v5
+        with:
+          persist-credentials: false
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@6d653acede28d24f02e3cd41383119e8b1b35921 #v2025.09.23
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+          targets: ${{ matrix.info.target }}
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@5597bc27da443ba8bf9a3bc4e5459ea59177de42 #v2.62.4
+        with: 
+          tool: cargo-llvm-cov
+
+      - name: Enable Rust cache
+        uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 #v2.8.1
+        with:
+          save-if: false
+
+      - name: Download test images
+        run: cd tests/images && wget -O test.img https://github.com/puffyCid/ext4-fs/releases/download/v0.0.0/test.img
+
+      - name: Generate code coverage
+        run: cargo llvm-cov --release --lcov --output-path lcov.info
+
+      
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@5a1091511ad55cbe89839c7260b706298ca349f7 #v5.5.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: lcov.info
+          fail_ci_if_error: true

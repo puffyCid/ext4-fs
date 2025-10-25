@@ -460,17 +460,4 @@ mod tests {
         let info = ext4_reader.extents(676).unwrap().unwrap();
         assert_eq!(info.extent_descriptors.len(), 3);
     }
-
-    //#[test]
-    fn test_walk_dir_os() {
-        let reader = File::open("/home/ubunty/Downloads/ext4_root.img").unwrap();
-        let buf = BufReader::new(reader);
-        let mut ext4_reader = Ext4Reader::new(buf, 4096).unwrap();
-        let root = ext4_reader.root().unwrap();
-        let mut cache = HashMap::new();
-        cache.insert(2, String::from(""));
-        cache_paths(&mut cache, &root);
-        walk_dir(&root, &mut ext4_reader, &mut cache);
-        assert_eq!(cache.len(), 5920);
-    }
 }
