@@ -55,7 +55,7 @@ jobs:
 
       - name: Run tests macos
         if: matrix.info.os == 'macOS-latest'
-        run: cd tests/images && wget -O test.img https://github.com/puffyCid/ext4-fs/releases/download/v0.0.0/test.img && cargo test --release
+        run: ls && cd tests/images && wget -O test.img https://github.com/puffyCid/ext4-fs/releases/download/v0.0.0/test.img && cargo test --release
 
       - name: Run tests Linux
         if: matrix.info.os == 'ubuntu-latest'
@@ -63,8 +63,8 @@ jobs:
 
       - name: Run tests Windows
         if: matrix.info.os == 'windows-latest'
-        run: Invoke-WebRequest -Uri "https://github.com/puffyCid/ext4-fs/releases/download/v0.0.0/test.img" -OutFile test.img && cargo test --release
+        run: cd tests/images && Invoke-WebRequest -Uri "https://github.com/puffyCid/ext4-fs/releases/download/v0.0.0/test.img" -OutFile test.img && cargo test --release
         
       - name: Run tests Windows ARM
         if: matrix.info.os == 'windows-11-arm'
-        run: Invoke-WebRequest -Uri "https://github.com/puffyCid/ext4-fs/releases/download/v0.0.0/test.img" -OutFile test.img && cargo test --release
+        run: cd tests/images && Invoke-WebRequest -Uri "https://github.com/puffyCid/ext4-fs/releases/download/v0.0.0/test.img" -OutFile test.img && cargo test --release
