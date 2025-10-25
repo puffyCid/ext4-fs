@@ -1,0 +1,1 @@
+# Download the image files from the GitHub Release page
