@@ -41,7 +41,8 @@ where
 {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         if self.extents.extent_descriptors.is_empty() && self.extents.index_descriptors.is_empty() {
-            return Ok(0);
+            debug!("[ext4-fs] Got empty extents descriptors and index descriptors. Sparse file?");
+            return Ok(buf.len());
         }
         let mut size = buf.len();
         // The max depth limit is 3

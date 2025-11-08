@@ -160,6 +160,11 @@ impl<'ext4, 'reader, T: std::io::Seek + std::io::Read> Ext4ReaderAction<'ext4, '
                 }
             };
 
+            // If our reader returns 0 bytes. Then something went wrong
+            if bytes == 0 {
+                break;
+            }
+
             bytes_read += bytes;
             if bytes_read > inode_value.size as usize {
                 temp_buf_size = bytes_read - inode_value.size as usize;
