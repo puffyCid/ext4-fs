@@ -533,7 +533,7 @@ mod tests {
         test_location.push("tests/images/test.img");
         let reader = File::open(test_location.to_str().unwrap()).unwrap();
         let buf = BufReader::new(reader);
-        let mut ext4_reader = Ext4Reader::new(buf, 4096).unwrap();
+        let mut ext4_reader = Ext4Reader::new(buf, 4096, 0).unwrap();
         let (_, results) = Inode::parse_inode(&test, &mut ext4_reader).unwrap();
         assert_eq!(results.accessed, 1753321358964008000);
         assert_eq!(results.inode_type, InodeType::Directory);
@@ -563,7 +563,7 @@ mod tests {
         test_location.push("tests/images/test.img");
         let reader = File::open(test_location.to_str().unwrap()).unwrap();
         let buf = BufReader::new(reader);
-        let mut ext4_reader = Ext4Reader::new(buf, 4096).unwrap();
+        let mut ext4_reader = Ext4Reader::new(buf, 4096, 0).unwrap();
 
         let test = Extents {
             signature: 1,
@@ -617,7 +617,7 @@ mod tests {
         test_location.push("tests/images/test.img");
         let reader = File::open(test_location.to_str().unwrap()).unwrap();
         let buf = BufReader::new(reader);
-        let mut ext4_reader = Ext4Reader::new(buf, 4096).unwrap();
+        let mut ext4_reader = Ext4Reader::new(buf, 4096, 0).unwrap();
         let (_, results) = Inode::parse_inode(&test, &mut ext4_reader).unwrap();
         assert_eq!(
             results.extents.as_ref().unwrap().extent_descriptors.len(),
@@ -641,7 +641,7 @@ mod tests {
         test_location.push("tests/images/test.img");
         let reader = File::open(test_location.to_str().unwrap()).unwrap();
         let buf = BufReader::new(reader);
-        let mut ext4_reader = Ext4Reader::new(buf, 4096).unwrap();
+        let mut ext4_reader = Ext4Reader::new(buf, 4096, 0).unwrap();
 
         let (_, results) =
             Inode::parse_extended_attributes(&tests, &mut ext4_reader, 0, false).unwrap();
@@ -669,7 +669,7 @@ mod tests {
         test_location.push("tests/images/test.img");
         let reader = File::open(test_location.to_str().unwrap()).unwrap();
         let buf = BufReader::new(reader);
-        let mut ext4_reader = Ext4Reader::new(buf, 4096).unwrap();
+        let mut ext4_reader = Ext4Reader::new(buf, 4096, 0).unwrap();
         let (_, results) = Inode::parse_inode(&test, &mut ext4_reader).unwrap();
         assert_eq!(results.accessed, 1759713524226734643);
         assert_eq!(results.inode_type, InodeType::SymbolicLink);

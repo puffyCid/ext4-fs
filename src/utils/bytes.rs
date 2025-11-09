@@ -38,7 +38,7 @@ mod tests {
         test_location.push("tests/images/test.img");
         let reader = File::open(test_location.to_str().unwrap()).unwrap();
         let buf = BufReader::new(reader);
-        let mut ext4_reader = Ext4Reader::new(buf, 4096).unwrap();
+        let mut ext4_reader = Ext4Reader::new(buf, 4096, 0).unwrap();
         assert_eq!(read_bytes(12, 90, &mut ext4_reader.fs).unwrap().len(), 90);
     }
 }
