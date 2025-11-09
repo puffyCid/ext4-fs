@@ -86,7 +86,7 @@ impl<T: std::io::Seek + std::io::Read> Ext4Reader<T> {
             cache_names: HashMap::new(),
         };
 
-        let block = SuperBlock::read_superblock(&mut reader.fs)?;
+        let block = SuperBlock::read_superblock(&mut reader.fs, reader.offset_start)?;
         let size = 1024;
         let base: u16 = 2;
         reader.blocksize = size * base.pow(block.block_size);
@@ -126,7 +126,7 @@ impl<'ext4, 'reader, T: std::io::Seek + std::io::Read> Ext4ReaderAction<'ext4, '
     }
 
     fn superblock(&mut self) -> Result<SuperBlock, Ext4Error> {
-        SuperBlock::read_superblock(&mut self.fs)
+        SuperBlock::read_superblock(&mut self.fs, self.offset_start)
     }
 
     fn stat(&mut self, inode: u32) -> Result<Stat, Ext4Error> {
