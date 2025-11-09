@@ -56,16 +56,16 @@ pub trait Ext4ReaderAction<'ext4, 'reader, T: std::io::Seek + std::io::Read> {
     /// Stat a file
     fn stat(&mut self, inode: u32) -> Result<Stat, Ext4Error>;
     /// Hash a file. MD5, SHA1, SHA256 are supported
-    fn hash(&mut self, inode: u32, hash: &Ext4Hash) -> Result<HashValue, Ext4Error>;
+    fn hash(&'reader mut self, inode: u32, hash: &Ext4Hash) -> Result<HashValue, Ext4Error>;
     /// Create a reader to stream a file from the ext4 filesystem.
     fn reader(&'reader mut self, inode: u32) -> Result<FileReader<'reader, T>, Ext4Error>;
     /// Read the contents of a file into memory. **WARNING** this will read the entire file regardless of size into memory!
-    fn read(&mut self, inode: u32) -> Result<Vec<u8>, Ext4Error>;
+    fn read(&'reader mut self, inode: u32) -> Result<Vec<u8>, Ext4Error>;
     /// Return verbose inode information for the provided inode
     fn inode_verbose(&mut self, inode: u32) -> Result<Inode, Ext4Error>;
 }
 
-impl<T: std::io::Seek + std::io::Read> Ext4Reader<T> {
+impl<'reader, T: std::io::Seek + std::io::Read> Ext4Reader<T> {
     /// Initialize an ext4 filesystem reader. This reader will automatically set the correct blocksize if you do not know it
     pub fn new(
         fs: BufReader<T>,
@@ -87,6 +87,7 @@ impl<T: std::io::Seek + std::io::Read> Ext4Reader<T> {
         };
 
         let block = SuperBlock::read_superblock(&mut reader.fs, reader.offset_start)?;
+        println!("{block:?}");
         let size = 1024;
         let base: u16 = 2;
         reader.blocksize = size * base.pow(block.block_size);
@@ -134,7 +135,7 @@ impl<'ext4, 'reader, T: std::io::Seek + std::io::Read> Ext4ReaderAction<'ext4, '
         Ok(Stat::new(inode_value, inode as u64))
     }
 
-    fn hash(&mut self, inode: u32, hashes: &Ext4Hash) -> Result<HashValue, Ext4Error> {
+    fn hash(&'reader mut self, inode: u32, hashes: &Ext4Hash) -> Result<HashValue, Ext4Error> {
         if !hashes.md5 && !hashes.sha1 && !hashes.sha256 {
             return Ok(HashValue {
                 md5: String::new(),
@@ -232,7 +233,7 @@ impl<'ext4, 'reader, T: std::io::Seek + std::io::Read> Ext4ReaderAction<'ext4, '
         Ok(hash_value)
     }
 
-    fn read(&mut self, inode: u32) -> Result<Vec<u8>, Ext4Error> {
+    fn read(&'reader mut self, inode: u32) -> Result<Vec<u8>, Ext4Error> {
         let inode_value = Inode::read_inode_table(self, inode)?;
         if inode_value.inode_type != InodeType::File {
             return Err(Ext4Error::NotAFile);

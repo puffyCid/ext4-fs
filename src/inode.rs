@@ -30,7 +30,8 @@ impl Inode {
             // Offset is our inode table block + inode index value (inodes are typically 256 bytes)
             // Ex: (1060 * 4096) + 1 * 256
             let offset = (desc.inode_table_block * reader.blocksize as u64)
-                + (index * reader.inode_size as u32) as u64;
+                + (index * reader.inode_size as u32) as u64
+                + reader.offset_start;
             debug!(
                 "[ext4-fs] Reading offset {offset}. Inode table block: {}. Index: {index}",
                 desc.inode_table_block
