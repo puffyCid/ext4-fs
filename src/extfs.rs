@@ -15,17 +15,7 @@ use std::{
     io::{BufReader, Read, copy},
 };
 
-/*
- * TODO:
- * 5. Setup github actions
- *    - review conditional if blocks in reader and extfs.rs
- *    - if they are not hit in coveraged. they are probably never going to be used then
- * Resources:
- * https://blogs.oracle.com/linux/post/understanding-ext4-disk-layout-part-2
- * https://blogs.oracle.com/linux/post/understanding-ext4-disk-layout-part-1
- * https://github.com/libyal/libfsext/blob/main/documentation/Extended%20File%20System%20(EXT).asciidoc
- *
- */
+/// Create a reader that can parse the ext4 filesystem
 pub struct Ext4Reader<T: std::io::Seek + std::io::Read> {
     pub fs: BufReader<T>,
     /// Default is probably 4096
