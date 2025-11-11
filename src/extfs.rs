@@ -30,7 +30,7 @@ pub struct Ext4Reader<T: std::io::Seek + std::io::Read> {
     pub fs: BufReader<T>,
     /// Default is probably 4096
     pub blocksize: u16,
-    // Will be 0. Unless you are reading a disk image file like QCOW or VMDK
+    /// Will be 0. Unless you are reading a disk image file like QCOW or VMDK
     pub offset_start: u64,
     pub(crate) descriptors: Option<Vec<Descriptor>>,
     pub(crate) incompat_flags: Vec<IncompatFlags>,
@@ -87,7 +87,6 @@ impl<T: std::io::Seek + std::io::Read> Ext4Reader<T> {
         };
 
         let block = SuperBlock::read_superblock(&mut reader.fs, reader.offset_start)?;
-        println!("{block:?}");
         let size = 1024;
         let base: u16 = 2;
         reader.blocksize = size * base.pow(block.block_size);
