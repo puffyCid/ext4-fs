@@ -104,7 +104,7 @@ fn main() {
     } else if let Some(path) = args.superblock {
         let reader = File::open(&path).unwrap();
         let buf = BufReader::new(reader);
-        let mut ext_reader = Ext4Reader::new(buf, 4096).unwrap();
+        let mut ext_reader = Ext4Reader::new(buf, 4096, 0).unwrap();
         let superblock = ext_reader.superblock().unwrap();
         println!("{superblock:?}");
     }
@@ -113,7 +113,7 @@ fn main() {
 fn filesystem_reader(input: &str, md5: bool, sha1: bool, sha256: bool, writer: &mut OutputWriter) {
     let reader = File::open(input).unwrap();
     let buf = BufReader::new(reader);
-    let mut ext_reader = Ext4Reader::new(buf, 4096).unwrap();
+    let mut ext_reader = Ext4Reader::new(buf, 4096, 0).unwrap();
 
     let root = ext_reader.root().unwrap();
     let value = TimelineFiles {

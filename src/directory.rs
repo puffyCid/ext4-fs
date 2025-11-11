@@ -20,8 +20,9 @@ impl Directory {
         let mut dirs = Vec::new();
         if extent.depth == 0 {
             for entry in &extent.extent_descriptors {
-                let offset =
-                    entry.lower_part_physical_block_number as u64 * reader.blocksize as u64;
+                let offset = entry.lower_part_physical_block_number as u64
+                    * reader.blocksize as u64
+                    + reader.offset_start;
                 let size = entry.number_of_blocks as u64 * reader.blocksize as u64;
                 let bytes = read_bytes(offset, size, &mut reader.fs)?;
 

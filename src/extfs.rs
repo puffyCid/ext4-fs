@@ -30,6 +30,8 @@ pub struct Ext4Reader<T: std::io::Seek + std::io::Read> {
     pub fs: BufReader<T>,
     /// Default is probably 4096
     pub blocksize: u16,
+    /// Will be 0. Unless you are reading a disk image file like QCOW or VMDK
+    pub offset_start: u64,
     pub(crate) descriptors: Option<Vec<Descriptor>>,
     pub(crate) incompat_flags: Vec<IncompatFlags>,
     pub(crate) blocks_per_group: u32,
@@ -65,10 +67,15 @@ pub trait Ext4ReaderAction<'ext4, 'reader, T: std::io::Seek + std::io::Read> {
 
 impl<T: std::io::Seek + std::io::Read> Ext4Reader<T> {
     /// Initialize an ext4 filesystem reader. This reader will automatically set the correct blocksize if you do not know it
-    pub fn new(fs: BufReader<T>, blocksize: u16) -> Result<Ext4Reader<T>, Ext4Error> {
+    pub fn new(
+        fs: BufReader<T>,
+        blocksize: u16,
+        offset_start: u64,
+    ) -> Result<Ext4Reader<T>, Ext4Error> {
         let mut reader = Ext4Reader {
             fs,
             blocksize,
+            offset_start,
             descriptors: None,
             incompat_flags: Vec::new(),
             blocks_per_group: 0,
@@ -79,7 +86,7 @@ impl<T: std::io::Seek + std::io::Read> Ext4Reader<T> {
             cache_names: HashMap::new(),
         };
 
-        let block = SuperBlock::read_superblock(&mut reader.fs)?;
+        let block = SuperBlock::read_superblock(&mut reader.fs, reader.offset_start)?;
         let size = 1024;
         let base: u16 = 2;
         reader.blocksize = size * base.pow(block.block_size);
@@ -119,7 +126,7 @@ impl<'ext4, 'reader, T: std::io::Seek + std::io::Read> Ext4ReaderAction<'ext4, '
     }
 
     fn superblock(&mut self) -> Result<SuperBlock, Ext4Error> {
-        SuperBlock::read_superblock(&mut self.fs)
+        SuperBlock::read_superblock(&mut self.fs, self.offset_start)
     }
 
     fn stat(&mut self, inode: u32) -> Result<Stat, Ext4Error> {
@@ -159,6 +166,11 @@ impl<'ext4, 'reader, T: std::io::Seek + std::io::Read> Ext4ReaderAction<'ext4, '
                     return Err(Ext4Error::FailedToRead);
                 }
             };
+
+            // If our reader returns 0 bytes. Then something went wrong
+            if bytes == 0 {
+                break;
+            }
 
             bytes_read += bytes;
             if bytes_read > inode_value.size as usize {
@@ -328,7 +340,7 @@ mod tests {
         test_location.push("tests/images/test.img");
         let reader = File::open(test_location.to_str().unwrap()).unwrap();
         let buf = BufReader::new(reader);
-        let mut ext4_reader = Ext4Reader::new(buf, 4096).unwrap();
+        let mut ext4_reader = Ext4Reader::new(buf, 4096, 0).unwrap();
         let dir = ext4_reader.root().unwrap();
 
         assert_eq!(dir.created, 1759689014000000000);
@@ -342,7 +354,7 @@ mod tests {
         test_location.push("tests/images/test.img");
         let reader = File::open(test_location.to_str().unwrap()).unwrap();
         let buf = BufReader::new(reader);
-        let mut ext4_reader = Ext4Reader::new(buf, 4096).unwrap();
+        let mut ext4_reader = Ext4Reader::new(buf, 4096, 0).unwrap();
         ext4_reader.root().unwrap();
         let dir = ext4_reader.read_dir(7634).unwrap();
 
@@ -358,7 +370,7 @@ mod tests {
         test_location.push("tests/images/test.img");
         let reader = File::open(test_location.to_str().unwrap()).unwrap();
         let buf = BufReader::new(reader);
-        let mut ext4_reader = Ext4Reader::new(buf, 4096).unwrap();
+        let mut ext4_reader = Ext4Reader::new(buf, 4096, 0).unwrap();
         ext4_reader.root().unwrap();
         let dir = ext4_reader.read_dir(7633).unwrap();
 
@@ -374,7 +386,7 @@ mod tests {
         test_location.push("tests/images/test.img");
         let reader = File::open(test_location.to_str().unwrap()).unwrap();
         let buf = BufReader::new(reader);
-        let mut ext4_reader = Ext4Reader::new(buf, 4096).unwrap();
+        let mut ext4_reader = Ext4Reader::new(buf, 4096, 0).unwrap();
         let root = ext4_reader.root().unwrap();
         let mut cache = HashMap::new();
         cache.insert(2, String::from(""));
@@ -389,7 +401,7 @@ mod tests {
         test_location.push("tests/images/test.img");
         let reader = File::open(test_location.to_str().unwrap()).unwrap();
         let buf = BufReader::new(reader);
-        let mut ext4_reader = Ext4Reader::new(buf, 4096).unwrap();
+        let mut ext4_reader = Ext4Reader::new(buf, 4096, 0).unwrap();
         let root = ext4_reader.root().unwrap();
         let mut cache = HashMap::new();
         cache.insert(2, String::from(""));
@@ -413,7 +425,7 @@ mod tests {
         test_location.push("tests/images/test.img");
         let reader = File::open(test_location.to_str().unwrap()).unwrap();
         let buf = BufReader::new(reader);
-        let mut ext4_reader = Ext4Reader::new(buf, 4096).unwrap();
+        let mut ext4_reader = Ext4Reader::new(buf, 4096, 0).unwrap();
         let hashes = Ext4Hash {
             md5: true,
             sha1: true,
@@ -434,7 +446,7 @@ mod tests {
         test_location.push("tests/images/test.img");
         let reader = File::open(test_location.to_str().unwrap()).unwrap();
         let buf = BufReader::new(reader);
-        let mut ext4_reader = Ext4Reader::new(buf, 4096).unwrap();
+        let mut ext4_reader = Ext4Reader::new(buf, 4096, 0).unwrap();
         let info = ext4_reader.read(676).unwrap();
         assert_eq!(info.len(), 274310864);
     }
@@ -445,7 +457,7 @@ mod tests {
         test_location.push("tests/images/test.img");
         let reader = File::open(test_location.to_str().unwrap()).unwrap();
         let buf = BufReader::new(reader);
-        let mut ext4_reader = Ext4Reader::new(buf, 4096).unwrap();
+        let mut ext4_reader = Ext4Reader::new(buf, 4096, 0).unwrap();
         let info = ext4_reader.descriptors().unwrap();
         assert_eq!(info.len(), 7);
     }
@@ -456,7 +468,7 @@ mod tests {
         test_location.push("tests/images/test.img");
         let reader = File::open(test_location.to_str().unwrap()).unwrap();
         let buf = BufReader::new(reader);
-        let mut ext4_reader = Ext4Reader::new(buf, 4096).unwrap();
+        let mut ext4_reader = Ext4Reader::new(buf, 4096, 0).unwrap();
         let info = ext4_reader.extents(676).unwrap().unwrap();
         assert_eq!(info.extent_descriptors.len(), 3);
     }

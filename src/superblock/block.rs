@@ -298,11 +298,14 @@ impl SuperBlock {
     /// Read the EXT4 Superblock. This tells us critical format info about the EXT4 filesystem
     pub(crate) fn read_superblock<T: std::io::Seek + std::io::Read>(
         fs: &mut BufReader<T>,
+        start: u64,
     ) -> Result<SuperBlock, Ext4Error> {
+        // Start will usually be 0 unless we are reading a disk image
+        // Offset is 1024 to skip the bootsector info
         let offset = 1024;
         let bytes = 1024;
 
-        let bytes = read_bytes(offset, bytes, fs)?;
+        let bytes = read_bytes(start + offset, bytes, fs)?;
         let block = match SuperBlock::parse_block(&bytes) {
             Ok((_, result)) => result,
             Err(err) => {

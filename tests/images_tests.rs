@@ -288,7 +288,7 @@ fn test_read_root_directory() {
     test_location.push("tests/images/test.img");
     let reader = File::open(test_location.to_str().unwrap()).unwrap();
     let buf = BufReader::new(reader);
-    let mut ext4_reader = Ext4Reader::new(buf, 4096).unwrap();
+    let mut ext4_reader = Ext4Reader::new(buf, 4096, 0).unwrap();
     let dir = ext4_reader.root().unwrap();
 
     assert_eq!(dir.created, 1759689014000000000);
@@ -302,7 +302,7 @@ fn test_walk_entire_filesystem() {
     test_location.push("tests/images/test.img");
     let reader = File::open(test_location.to_str().unwrap()).unwrap();
     let buf = BufReader::new(reader);
-    let mut ext4_reader = Ext4Reader::new(buf, 4096).unwrap();
+    let mut ext4_reader = Ext4Reader::new(buf, 4096, 0).unwrap();
     let root = ext4_reader.root().unwrap();
 
     let mut cache = Vec::new();
@@ -325,7 +325,7 @@ fn test_hash_helloworld() {
     test_location.push("tests/images/test.img");
     let reader = File::open(test_location.to_str().unwrap()).unwrap();
     let buf = BufReader::new(reader);
-    let mut ext4_reader = Ext4Reader::new(buf, 4096).unwrap();
+    let mut ext4_reader = Ext4Reader::new(buf, 4096, 0).unwrap();
 
     let mut cache = Vec::new();
     cache.push(String::new());
@@ -345,7 +345,7 @@ fn test_hash_every_file() {
     test_location.push("tests/images/test.img");
     let reader = File::open(test_location.to_str().unwrap()).unwrap();
     let buf = BufReader::new(reader);
-    let mut ext4_reader = Ext4Reader::new(buf, 4096).unwrap();
+    let mut ext4_reader = Ext4Reader::new(buf, 4096, 0).unwrap();
     let root = ext4_reader.root().unwrap();
 
     let mut cache = Vec::new();
@@ -368,7 +368,7 @@ fn test_stat_everything() {
     test_location.push("tests/images/test.img");
     let reader = File::open(test_location.to_str().unwrap()).unwrap();
     let buf = BufReader::new(reader);
-    let mut ext4_reader = Ext4Reader::new(buf, 4096).unwrap();
+    let mut ext4_reader = Ext4Reader::new(buf, 4096, 0).unwrap();
     let root = ext4_reader.root().unwrap();
 
     let mut cache = Vec::new();
@@ -393,7 +393,7 @@ fn test_ext4_minefield() {
     let buf = BufReader::new(reader);
 
     // The blocksize for the example is actually 1024. The blocksize should self correct once the superblock is parsed
-    let mut ext4_reader = Ext4Reader::new(buf, 4096).unwrap();
+    let mut ext4_reader = Ext4Reader::new(buf, 4096, 0).unwrap();
     let root = ext4_reader.root().unwrap();
 
     let mut cache = Vec::new();

@@ -14,6 +14,7 @@ where
     file_size: u64,
     logical_block: u32,
     total_sparse: u64,
+    offset_start: u64,
 }
 
 impl<'reader, T: io::Seek + io::Read> Ext4Reader<T> {
@@ -31,6 +32,7 @@ impl<'reader, T: io::Seek + io::Read> Ext4Reader<T> {
             file_size,
             logical_block: 0,
             total_sparse: 0,
+            offset_start: self.offset_start,
         }
     }
 }
@@ -41,7 +43,8 @@ where
 {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         if self.extents.extent_descriptors.is_empty() && self.extents.index_descriptors.is_empty() {
-            return Ok(0);
+            debug!("[ext4-fs] Got empty extents descriptors and index descriptors. Sparse file?");
+            return Ok(buf.len());
         }
         let mut size = buf.len();
         // The max depth limit is 3
@@ -55,7 +58,7 @@ where
             while self.extents.depth > 0 && limit != max_extents {
                 let mut next_depth = Vec::new();
                 for extent_index in indexes {
-                    let offset = extent_index.block_number * self.blocksize;
+                    let offset = extent_index.block_number * self.blocksize + self.offset_start;
                     let bytes = match read_bytes(offset, self.blocksize, self.reader) {
                         Ok(result) => result,
                         Err(err) => {
@@ -188,7 +191,8 @@ where
             }
 
             // Offset to the extent block. We need to account for our current reader position too
-            let offset = (extent.block_number * self.blocksize) + self.disk_position;
+            let offset =
+                (extent.block_number * self.blocksize) + self.disk_position + self.offset_start;
 
             debug!("     [ext4-fs] ### reading offset: {offset}");
             // If the user wants to read more bytes than allocated in a block then we need to reduce our bytes to read
