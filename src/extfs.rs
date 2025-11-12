@@ -30,6 +30,7 @@ pub struct Ext4Reader<T: std::io::Seek + std::io::Read> {
     pub(crate) inode_size: u16,
     pub(crate) inodes_per_group: u32,
     pub(crate) cache_names: HashMap<u64, String>,
+    pub(crate) last_mount_path: String,
 }
 
 pub trait Ext4ReaderAction<'ext4, 'reader, T: std::io::Seek + std::io::Read> {
@@ -74,9 +75,11 @@ impl<T: std::io::Seek + std::io::Read> Ext4Reader<T> {
             inode_size: 0,
             inodes_per_group: 0,
             cache_names: HashMap::new(),
+            last_mount_path: String::new(),
         };
 
         let block = SuperBlock::read_superblock(&mut reader.fs, reader.offset_start)?;
+        reader.last_mount_path = block.last_mount_path;
         let size = 1024;
         let base: u16 = 2;
         reader.blocksize = size * base.pow(block.block_size);
@@ -107,6 +110,14 @@ impl<'ext4, 'reader, T: std::io::Seek + std::io::Read> Ext4ReaderAction<'ext4, '
             let mut info = FileInfo::new(inode_value, dirs, inode as u64);
             if let Some(name) = self.cache_names.get(&info.inode) {
                 info.name = name.clone();
+            }
+            let root = 2;
+            if inode == root {
+                info.name = format!(
+                    "{}/{}",
+                    self.last_mount_path.trim_end_matches("/"),
+                    info.name
+                );
             }
             update_cache(&mut self.cache_names, &info);
             return Ok(info);

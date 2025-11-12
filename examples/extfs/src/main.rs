@@ -153,7 +153,7 @@ fn filesystem_reader(input: &str, md5: bool, sha1: bool, sha256: bool, writer: &
     let mut paths = Vec::new();
     paths.push(value);
     let mut cache = Vec::new();
-    cache.push(String::from("/"));
+    cache.push(root.name.trim_end_matches('/').to_string());
 
     let hash = Ext4Hash { md5, sha1, sha256 };
     walk_dir(
@@ -221,11 +221,11 @@ fn walk_dir<T: std::io::Seek + std::io::Read>(
             && entry.inode != 2
         {
             let info = reader.read_dir(entry.inode).unwrap();
-            let directory = cache.join("/").replace("//", "/");
-            cache.push(info.name.clone());
+            let directory = cache.join("/");
+            cache.push(info.name.trim_matches('/').to_string());
 
             let value = TimelineFiles {
-                fullpath: cache.join("/").replace("//", "/"),
+                fullpath: cache.join("/"),
                 directory,
                 filename: info.name.clone(),
                 file_type: FileType::Directory,
@@ -266,7 +266,7 @@ fn walk_dir<T: std::io::Seek + std::io::Read>(
 
         println!(
             "Current file path: {}/{}",
-            cache.join("/").replace("//", "/"),
+            cache.join("/"),
             entry.name
         );
 
@@ -274,10 +274,10 @@ fn walk_dir<T: std::io::Seek + std::io::Read>(
         if entry.file_type == FileType::File {
             let hash_value = reader.hash(entry.inode, hash).unwrap();
 
-            let directory = cache.join("/").replace("//", "/");
+            let directory = cache.join("/");
 
             let value = TimelineFiles {
-                fullpath: format!("{}/{}", cache.join("/"), entry.name).replace("//", "/"),
+                fullpath: format!("{}/{}", cache.join("/"), entry.name),
                 directory,
                 filename: entry.name.clone(),
                 file_type: FileType::File,
@@ -316,9 +316,9 @@ fn walk_dir<T: std::io::Seek + std::io::Read>(
         }
 
         // Everything. Symbolic links, Blocks, FIFO, etc
-        let directory = cache.join("/").replace("//", "/");
+        let directory = cache.join("/");
         let value = TimelineFiles {
-            fullpath: format!("{}/{}", cache.join("/"), entry.name).replace("//", "/"),
+            fullpath: format!("{}/{}", cache.join("/"), entry.name),
             directory,
             filename: entry.name.clone(),
             file_type: entry.file_type,
