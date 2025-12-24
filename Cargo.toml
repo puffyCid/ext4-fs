@@ -10,9 +10,9 @@ keywords = ["forensics"]
 [dependencies]
 nom = "8.0.0"
 serde = { version = "1.0.228", features = ["derive"] }
-log = "0.4.28"
+log = "0.4.29"
 base64 = "0.22.1"
-uuid = { version = "1.18.1", features = ["v4"] }
+uuid = { version = "1.19.0", features = ["v4"] }
 md-5 = "0.10.6"
 sha-1 = "0.10.1"
 sha2 = "0.10.9"
