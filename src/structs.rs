@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 
 #[derive(Debug)]
@@ -203,7 +203,7 @@ pub struct FileInfo {
     pub is_sparse: bool,
 }
 
-#[derive(Debug, PartialEq, Serialize, Copy, Clone)]
+#[derive(Debug, PartialEq, Serialize, Deserialize, Copy, Clone)]
 pub enum InodeType {
     Pipe,
     Device,
@@ -232,7 +232,7 @@ pub struct Stat {
     pub gid: u16,
     pub is_sparse: bool,
 }
-#[derive(Debug, PartialEq, Serialize, Clone, Copy)]
+#[derive(Debug, PartialEq, Serialize, Clone, Copy, Deserialize)]
 pub enum InodePermissions {
     ReadOther,
     WriteOther,
@@ -249,7 +249,7 @@ pub enum InodePermissions {
     Unknown,
 }
 
-#[derive(Debug, PartialEq, Clone, Copy, Serialize)]
+#[derive(Debug, PartialEq, Clone, Copy, Serialize, Deserialize)]
 pub enum FileType {
     Unknown,
     File,
