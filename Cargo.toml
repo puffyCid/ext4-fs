@@ -1,6 +1,6 @@
 [package]
 name = "ext4-fs"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/puffyCid/ext4-fs"
@@ -12,7 +12,9 @@ nom = "8.0.0"
 serde = { version = "1.0.228", features = ["derive"] }
 log = "0.4.29"
 base64 = "0.22.1"
-uuid = { version = "1.22.0", features = ["v4"] }
-md-5 = "0.10.6"
-sha-1 = "0.10.1"
-sha2 = "0.10.9"
+uuid = { version = "1.23.0", features = ["v4"] }
+md-5 = "0.11.0"
+sha1 = "0.11.0"
+sha2 = "0.11.0"
+base16ct = { version = "1.0.0", default-features = false }
+digest-io = { version = "0.1.0", default-features = false }

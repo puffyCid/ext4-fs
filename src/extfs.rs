@@ -6,6 +6,8 @@ use crate::{
     },
     superblock::block::{IncompatFlags, SuperBlock},
 };
+use base16ct::lower::encode_str;
+use digest_io::IoWrapper;
 use log::error;
 use md5::{Digest, Md5};
 use sha1::Sha1;
@@ -147,9 +149,9 @@ impl<'ext4, 'reader, T: std::io::Seek + std::io::Read> Ext4ReaderAction<'ext4, '
         if inode_value.inode_type != InodeType::File {
             return Err(Ext4Error::NotAFile);
         }
-        let mut md5 = Md5::new();
-        let mut sha1 = Sha1::new();
-        let mut sha256 = Sha256::new();
+        let mut md5 = IoWrapper(Md5::new());
+        let mut sha1 = IoWrapper(Sha1::new());
+        let mut sha256 = IoWrapper(Sha256::new());
 
         let mut file_reader = self.reader(inode)?;
         // Keep track of how many bytes we read
@@ -218,16 +220,19 @@ impl<'ext4, 'reader, T: std::io::Seek + std::io::Read> Ext4ReaderAction<'ext4, '
         };
 
         if hashes.md5 {
-            let hash = md5.finalize();
-            hash_value.md5 = format!("{hash:x}");
+            let hash = md5.0.finalize();
+            let mut buf = [0u8; 32];
+            hash_value.md5 = encode_str(&hash, &mut buf).unwrap_or_default().to_string();
         }
         if hashes.sha1 {
-            let hash = sha1.finalize();
-            hash_value.sha1 = format!("{hash:x}");
+            let hash = sha1.0.finalize();
+            let mut buf = [0u8; 40];
+            hash_value.sha1 = encode_str(&hash, &mut buf).unwrap_or_default().to_string();
         }
         if hashes.sha256 {
-            let hash = sha256.finalize();
-            hash_value.sha256 = format!("{hash:x}");
+            let hash = sha256.0.finalize();
+            let mut buf = [0u8; 64];
+            hash_value.sha256 = encode_str(&hash, &mut buf).unwrap_or_default().to_string();
         }
 
         Ok(hash_value)
