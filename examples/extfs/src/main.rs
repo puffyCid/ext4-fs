@@ -5,15 +5,15 @@ use ext4_fs::{
     extfs::{Ext4Reader, Ext4ReaderAction},
     structs::{Ext4Hash, FileInfo, FileType, InodePermissions, InodeType},
 };
-use log::{LevelFilter, error};
 use serde::Serialize;
-use simplelog::{ColorChoice, Config, TermLogger, TerminalMode};
 use std::{
     collections::HashMap,
     fs::File,
     io::{BufReader, Write},
 };
 use std::{error::Error, fs};
+use tracing::{Level, event, level_filters::LevelFilter, subscriber::set_global_default};
+use tracing_subscriber::FmtSubscriber;
 
 #[derive(Parser, Debug)]
 #[clap(version, about, long_about = None)]
@@ -73,20 +73,15 @@ fn main() {
     let output_format = args.format;
 
     let filter = if args.debugging {
-        LevelFilter::Debug
+        LevelFilter::DEBUG
     } else {
-        LevelFilter::Warn
+        LevelFilter::WARN
     };
-    TermLogger::init(
-        filter,
-        Config::default(),
-        TerminalMode::Stderr,
-        ColorChoice::Auto,
-    )
-    .expect("Failed to initialize simple logger");
+    let subscribe = FmtSubscriber::builder().with_max_level(filter).finish();
+    set_global_default(subscribe).expect("Failed to initialize tracing");
 
     if args.input.is_none() && args.superblock.is_none() {
-        error!("Require a ext4 file to parse!");
+        event!(Level::ERROR, "Require a ext4 file to parse!");
         return;
     }
 
@@ -264,11 +259,7 @@ fn walk_dir<T: std::io::Seek + std::io::Read>(
             continue;
         }
 
-        println!(
-            "Current file path: {}/{}",
-            cache.join("/"),
-            entry.name
-        );
+        println!("Current file path: {}/{}", cache.join("/"), entry.name);
 
         // Hash files
         if entry.file_type == FileType::File {
@@ -396,7 +387,7 @@ impl OutputWriter {
                 OutputWriterEnum::Csv(Box::new(csv_writer))
             }
             _ => {
-                error!("Unsupported output format: {output_format}");
+                event!(Level::ERROR, "Unsupported output format: {output_format}");
                 std::process::exit(1);
             }
         };

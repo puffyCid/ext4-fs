@@ -5,8 +5,8 @@ use crate::{
     superblock::block::IncompatFlags,
     utils::bytes::read_bytes,
 };
-use log::error;
 use nom::number::complete::{le_u16, le_u32};
+use tracing::{Level, event};
 
 /**
  * Get Group Descriptor Table info. To capture the entire table you need to:
@@ -54,7 +54,10 @@ impl Descriptor {
             let desc = match Descriptor::parse_descriptor(&bytes, is_bit64) {
                 Ok((_, result)) => result,
                 Err(err) => {
-                    error!("[ext4-fs] Could not parse the descriptor {err:?}");
+                    event!(
+                        Level::ERROR,
+                        "[ext4-fs] Could not parse the descriptor {err:?}"
+                    );
                     return Err(Ext4Error::Descriptor);
                 }
             };

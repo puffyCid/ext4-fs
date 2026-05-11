@@ -2,9 +2,9 @@ use crate::{
     error::Ext4Error,
     structs::{ExtentDescriptor, Extents, IndexDescriptor},
 };
-use log::error;
 use nom::number::complete::{le_u16, le_u32};
 use std::collections::BTreeMap;
+use tracing::{Level, event};
 
 impl Extents {
     /// Read and pars the extents data
@@ -12,7 +12,7 @@ impl Extents {
         let extents = match Extents::parse_extents(data) {
             Ok((_, results)) => results,
             Err(err) => {
-                error!("[ext4-fs] Could not parse extents {err:?}");
+                event!(Level::ERROR, "[ext4-fs] Could not parse extents {err:?}");
                 return Err(Ext4Error::Extents);
             }
         };
