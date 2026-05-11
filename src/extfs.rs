@@ -8,7 +8,6 @@ use crate::{
 };
 use base16ct::lower::encode_str;
 use digest_io::IoWrapper;
-use log::error;
 use md5::{Digest, Md5};
 use sha1::Sha1;
 use sha2::Sha256;
@@ -16,6 +15,7 @@ use std::{
     collections::HashMap,
     io::{BufReader, Read, copy},
 };
+use tracing::{Level, event};
 
 /// Create a reader that can parse the ext4 filesystem
 pub struct Ext4Reader<T: std::io::Seek + std::io::Read> {
@@ -124,7 +124,10 @@ impl<'ext4, 'reader, T: std::io::Seek + std::io::Read> Ext4ReaderAction<'ext4, '
             update_cache(&mut self.cache_names, &info);
             return Ok(info);
         }
-        error!("[ext4-fs] No extent data found. Cannot read directory");
+        event!(
+            Level::ERROR,
+            "[ext4-fs] No extent data found. Cannot read directory"
+        );
         Err(Ext4Error::Directory)
     }
 
@@ -165,7 +168,10 @@ impl<'ext4, 'reader, T: std::io::Seek + std::io::Read> Ext4ReaderAction<'ext4, '
             let bytes = match file_reader.read(&mut temp_buf) {
                 Ok(result) => result,
                 Err(err) => {
-                    error!("[ext4-fs] Failed to read bytes for inode {inode}: {err:?}");
+                    event!(
+                        Level::ERROR,
+                        "[ext4-fs] Failed to read bytes for inode {inode}: {err:?}"
+                    );
                     return Err(Ext4Error::FailedToRead);
                 }
             };
@@ -246,7 +252,7 @@ impl<'ext4, 'reader, T: std::io::Seek + std::io::Read> Ext4ReaderAction<'ext4, '
         let mut file_reader = self.reader(inode)?;
         let mut buf = vec![0; inode_value.size as usize];
         if let Err(err) = file_reader.read(&mut buf) {
-            error!("[ext4-fs] Could not read file: {err:?}");
+            event!(Level::ERROR, "[ext4-fs] Could not read file: {err:?}");
             return Err(Ext4Error::ReadFile);
         }
 
@@ -261,7 +267,10 @@ impl<'ext4, 'reader, T: std::io::Seek + std::io::Read> Ext4ReaderAction<'ext4, '
         if let Some(extent) = inode_value.extents {
             return Ok(Ext4Reader::file_reader(self, &extent, inode_value.size));
         }
-        error!("[ext4-fs] No extent data found. Cannot read directory");
+        event!(
+            Level::ERROR,
+            "[ext4-fs] No extent data found. Cannot read directory"
+        );
         Err(Ext4Error::Directory)
     }
 

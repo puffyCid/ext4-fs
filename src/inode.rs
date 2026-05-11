@@ -4,12 +4,12 @@ use crate::{
     structs::{Extents, Inode, InodeFlags, InodePermissions, InodeType},
     utils::{bytes::read_bytes, encoding::base64_encode_standard, strings::extract_utf8_string},
 };
-use log::{debug, error, warn};
 use nom::{
     bytes::complete::take,
     number::complete::{le_i32, le_u8, le_u16, le_u32},
 };
 use std::collections::HashMap;
+use tracing::{Level, event};
 
 impl Inode {
     /// Read and parse the inode table. This will contain most metadata about files on EXT4 filesystem
@@ -32,7 +32,8 @@ impl Inode {
             let offset = (desc.inode_table_block * reader.blocksize as u64)
                 + (index * reader.inode_size as u32) as u64
                 + reader.offset_start;
-            debug!(
+            event!(
+                Level::DEBUG,
                 "[ext4-fs] Reading offset {offset}. Inode table block: {}. Index: {index}",
                 desc.inode_table_block
             );
@@ -41,7 +42,10 @@ impl Inode {
             let dir = match Inode::parse_inode(&bytes, reader) {
                 Ok((_, result)) => result,
                 Err(err) => {
-                    error!("[ext4-fs] Could not parse the directory {err:?}");
+                    event!(
+                        Level::ERROR,
+                        "[ext4-fs] Could not parse the directory {err:?}"
+                    );
                     return Err(Ext4Error::Directory);
                 }
             };
@@ -49,7 +53,7 @@ impl Inode {
             return Ok(dir);
         };
 
-        error!("[ext4-fs] Bad inode provided {inode}");
+        event!(Level::ERROR, "[ext4-fs] Bad inode provided {inode}");
         Err(Ext4Error::BadInode)
     }
 
@@ -89,7 +93,10 @@ impl Inode {
             if size < path_size as u32 {
                 symoblic_link = extract_utf8_string(link_data);
             } else {
-                warn!("[ext4-fs] Got large SymbolicLink path: {link_data:?}");
+                event!(
+                    Level::WARN,
+                    "[ext4-fs] Got large SymbolicLink path: {link_data:?}"
+                );
             }
         } else if flags.contains(&InodeFlags::Extents) {
             let extent_size: u8 = 60;
@@ -100,7 +107,10 @@ impl Inode {
         } else if flags.contains(&InodeFlags::Inline) {
             let file_entry_size: u8 = 60;
             let (input, file_data) = take(file_entry_size)(remaining)?;
-            warn!("[ext4-tfs] Got Inline data. This is not supported yet. Data: {file_data:?}");
+            event!(
+                Level::WARN,
+                "[ext4-tfs] Got Inline data. This is not supported yet. Data: {file_data:?}"
+            );
             remaining = input;
         }
 
@@ -215,7 +225,7 @@ impl Inode {
         } else if (data & 0xc000) == 0xc000 {
             return InodeType::Socket;
         }
-        warn!("[ext4-fs] Got unknown file {data}");
+        event!(Level::WARN, "[ext4-fs] Got unknown file {data}");
         InodeType::Unknown
     }
 
@@ -433,7 +443,8 @@ impl Inode {
             let bytes = match read_bytes(offset, reader.blocksize as u64, &mut reader.fs) {
                 Ok(result) => result,
                 Err(err) => {
-                    error!(
+                    event!(
+                        Level::ERROR,
                         "[ext4-fs] Could not read extended inode {ea_inode} attribute at offset {offset}: {err:?}"
                     );
                     return Ok((input, attributes));
@@ -450,7 +461,8 @@ impl Inode {
             ) {
                 Ok((_, results)) => results,
                 Err(err) => {
-                    error!(
+                    event!(
+                        Level::ERROR,
                         "[ext4-fs] Could not parse extended inode {ea_inode} attribute at offset {offset}: {err:?}"
                     );
                     return Ok((input, attributes));

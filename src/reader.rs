@@ -1,5 +1,6 @@
+use tracing::{Level, event};
+
 use crate::{extfs::Ext4Reader, structs::Extents, utils::bytes::read_bytes};
-use log::{debug, error};
 use std::io::{self, BufReader, Error, Read, Seek};
 
 pub struct FileReader<'reader, T>
@@ -43,7 +44,10 @@ where
 {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         if self.extents.extent_descriptors.is_empty() && self.extents.index_descriptors.is_empty() {
-            debug!("[ext4-fs] Got empty extents descriptors and index descriptors. Sparse file?");
+            event!(
+                Level::DEBUG,
+                "[ext4-fs] Got empty extents descriptors and index descriptors. Sparse file?"
+            );
             return Ok(buf.len());
         }
         let mut size = buf.len();
@@ -62,7 +66,8 @@ where
                     let bytes = match read_bytes(offset, self.blocksize, self.reader) {
                         Ok(result) => result,
                         Err(err) => {
-                            error!(
+                            event!(
+                                Level::ERROR,
                                 "[ext4-fs] Could not read extent index bytes at offset {offset}. Wanted {size} bytes. Error: {err:?}"
                             );
                             return Err(Error::new(io::ErrorKind::InvalidData, err));
@@ -71,7 +76,8 @@ where
                     let mut extents = match Extents::read_extents(&bytes) {
                         Ok(result) => result,
                         Err(err) => {
-                            error!(
+                            event!(
+                                Level::ERROR,
                                 "[ext4-fs] Could not parse extent index data at offset {offset}. Wanted {size} bytes. Error: {err:?}"
                             );
                             return Err(Error::new(io::ErrorKind::InvalidData, err));
@@ -146,9 +152,12 @@ where
             }
 
             if self.disk_position >= max_position && extent.block_diff == 0 {
-                debug!(
+                event!(
+                    Level::DEBUG,
                     "[ext4-fs] disk position {} larger or equal than max {max_position}. file size: {}. file position: {}",
-                    self.disk_position, self.file_size, self.file_position
+                    self.disk_position,
+                    self.file_size,
+                    self.file_position
                 );
                 // If we jumped to a really large offset using seek
                 // We need to preserve the offset we are at in the next extent block
@@ -166,9 +175,13 @@ where
             // Need to handle it
             let sparse_size = extent.block_diff as u64 * self.blocksize;
             if self.disk_position >= max_position {
-                debug!(
+                event!(
+                    Level::DEBUG,
                     "[ext4-fs] disk postiion now: {}. Diff: {}. sparse: {}. file position: {}",
-                    self.disk_position, extent.block_diff, self.total_sparse, self.file_position
+                    self.disk_position,
+                    extent.block_diff,
+                    self.total_sparse,
+                    self.file_position
                 );
                 if extent.block_diff != 0 && self.total_sparse < sparse_size {
                     if sparse_size < size as u64 {
@@ -194,7 +207,7 @@ where
             let offset =
                 (extent.block_number * self.blocksize) + self.disk_position + self.offset_start;
 
-            debug!("     [ext4-fs] ### reading offset: {offset}");
+            event!(Level::DEBUG, "     [ext4-fs] ### reading offset: {offset}");
             // If the user wants to read more bytes than allocated in a block then we need to reduce our bytes to read
             // We will keep reading until we have enough bytes to fill the user's buffer
             if size as u64 > (extent.number_of_blocks as u64 * self.blocksize) {
@@ -208,7 +221,8 @@ where
             bytes = match read_bytes(offset, size as u64, self.reader) {
                 Ok(result) => result,
                 Err(err) => {
-                    error!(
+                    event!(
+                        Level::ERROR,
                         "[ext4-fs] Could not read data at offset {offset}. Wanted {size} bytes. Error: {err:?}"
                     );
                     return Err(Error::new(io::ErrorKind::InvalidData, err));
@@ -217,9 +231,13 @@ where
             // Make sure we track our position after reading bytes from disk
             self.disk_position += size as u64;
             self.file_position += size as u64;
-            debug!(
+            event!(
+                Level::DEBUG,
                 "    [ext4-fs] ->   reading disk postiion is now: {}. Diff: {}. sparse: {}. file position: {}",
-                self.disk_position, extent.block_diff, self.total_sparse, self.file_position
+                self.disk_position,
+                extent.block_diff,
+                self.total_sparse,
+                self.file_position
             );
             if self.disk_position >= max_position && extent.block_diff == 0 {
                 // We have reached the end if the logical block is larger than the next block (default is 0)
@@ -250,7 +268,8 @@ where
             return Ok(total_bytes.len());
         }
 
-        error!(
+        event!(
+            Level::ERROR,
             "[ext4-fs] Failed to process {} bytes read wanted {}",
             bytes.len(),
             buf.len()

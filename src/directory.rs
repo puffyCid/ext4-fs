@@ -4,12 +4,12 @@ use crate::{
     structs::{Directory, Extents, FileType},
     utils::{bytes::read_bytes, strings::extract_utf8_string},
 };
-use log::error;
 use nom::{
     bytes::complete::take,
     number::complete::{le_u8, le_u16, le_u32},
 };
 use std::collections::HashMap;
+use tracing::{Level, event};
 
 impl Directory {
     /// Read the directory attribute data associated with an directory
@@ -29,7 +29,10 @@ impl Directory {
                 let dir = match Directory::parse_linear_directory(&bytes) {
                     Ok((_, result)) => result,
                     Err(err) => {
-                        error!("[ext4-fs] Failed to parse linear directory: {err:?}");
+                        event!(
+                            Level::ERROR,
+                            "[ext4-fs] Failed to parse linear directory: {err:?}"
+                        );
                         continue;
                     }
                 };
@@ -49,7 +52,10 @@ impl Directory {
                 let dir = match Directory::parse_linear_directory(&bytes) {
                     Ok((_, result)) => result,
                     Err(err) => {
-                        error!("[ext4-fs] Failed to parse linear directory: {err:?}");
+                        event!(
+                            Level::ERROR,
+                            "[ext4-fs] Failed to parse linear directory: {err:?}"
+                        );
                         continue;
                     }
                 };

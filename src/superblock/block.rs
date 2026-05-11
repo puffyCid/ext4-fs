@@ -5,13 +5,13 @@ use crate::{
         strings::{extract_utf8_string, format_guid_be_bytes},
     },
 };
-use log::error;
 use nom::{
     bytes::complete::take,
     number::complete::{le_u8, le_u16, le_u32, le_u64, le_u128},
 };
 use serde::Serialize;
 use std::io::BufReader;
+use tracing::{Level, event};
 
 #[derive(Debug, Serialize)]
 pub struct SuperBlock {
@@ -309,7 +309,10 @@ impl SuperBlock {
         let block = match SuperBlock::parse_block(&bytes) {
             Ok((_, result)) => result,
             Err(err) => {
-                error!("[ext4-fs] Could not parse the superblock {err:?}");
+                event!(
+                    Level::ERROR,
+                    "[ext4-fs] Could not parse the superblock {err:?}"
+                );
                 return Err(Ext4Error::Superblock);
             }
         };
